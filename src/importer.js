@@ -8,8 +8,8 @@ const codec = require('./codec')
 const { diff } = require('./diff')
 const { fileKey, listFiles, indexDir } = require('./mods')
 
-function importFolder(srcDir, destDir, { vanillaDir, id, name } = {}) {
-  const vanilla = vanillaDir ? indexDir(vanillaDir) : new Map()
+function importFolder(srcDir, destDir, { vanilla, vanillaDir, id, name } = {}) {
+  vanilla = vanilla || (vanillaDir ? indexDir(vanillaDir) : new Map())
   const patches = {}
   const copied = []
   const skipped = []
@@ -18,8 +18,8 @@ function importFolder(srcDir, destDir, { vanillaDir, id, name } = {}) {
   for (const rel of listFiles(srcDir)) {
     const abs = path.join(srcDir, rel)
     const buffer = fs.readFileSync(abs)
-    const base = vanilla.get(fileKey(rel))
-    if (codec.isPatchable(buffer) && base) {
+    const base = codec.isPatchable(buffer) ? vanilla.get(fileKey(rel)) : undefined
+    if (base) {
       const { ops, warnings } = diff(codec.readDoc(base.abs), codec.decode(buffer))
       if (warnings.length === 0) {
         if (ops.length === 0) skipped.push(rel)

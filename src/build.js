@@ -17,15 +17,16 @@ function collectSteps(mods, vanilla, notes) {
   const steps = new Map() // key -> { rel, steps: [] }
   const add = (rel, step) => {
     const key = fileKey(rel)
-    if (!steps.has(key)) steps.set(key, { rel: vanilla.get(key)?.rel || rel.replace(/\\/g, '/'), steps: [] })
+    const known = vanilla.relOf ? vanilla.relOf(key) : vanilla.get(key)?.rel
+    if (!steps.has(key)) steps.set(key, { rel: known || rel.replace(/\\/g, '/'), steps: [] })
     steps.get(key).steps.push(step)
   }
 
   for (const mod of mods) {
     for (const file of mod.files) {
       const buffer = fs.readFileSync(file.abs)
-      const base = vanilla.get(fileKey(file.rel))
-      if (codec.isPatchable(buffer) && base) {
+      const base = codec.isPatchable(buffer) ? vanilla.get(fileKey(file.rel)) : undefined
+      if (base) {
         const { ops, warnings } = diff(codec.readDoc(base.abs), codec.decode(buffer))
         if (warnings.length === 0) {
           add(file.rel, { type: 'patch', mod: mod.id, ops, auto: true })
@@ -90,8 +91,10 @@ function buildFile(key, entry, vanilla, events, errors) {
 }
 
 // mods: lista de mods ya cargados, en orden de carga (el último gana).
-function build(mods, { vanillaDir }) {
-  const vanilla = vanillaDir ? indexDir(vanillaDir) : new Map()
+// vanilla: algo con get(fileKey) -> { rel, abs } (ver vanilla.js); o vanillaDir para usar solo
+// los archivos de esa carpeta.
+function build(mods, { vanilla, vanillaDir }) {
+  vanilla = vanilla || (vanillaDir ? indexDir(vanillaDir) : new Map())
   const notes = []
   const events = []
   const errors = []

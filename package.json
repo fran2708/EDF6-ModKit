@@ -8,12 +8,17 @@
     "edfmk": "bin/edfmk.js"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "build:exe": "node scripts/build-exe.js"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
     "sgott": "github:zeddidragon/sgott#af51c2d26098026770d41cf7b1a001e7ff4a064e"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "postject": "^1.0.0-alpha.6"
   }
 }

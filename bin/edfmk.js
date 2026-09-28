@@ -9,11 +9,14 @@ const { deploy, clean } = require('../src/deploy')
 const { diff } = require('../src/diff')
 const { leaves } = require('../src/path')
 const { importFolder } = require('../src/importer')
+const { ensureWorkspace, isPackaged, vanillaFor } = require('../src/workspace')
+const { fileKey } = require('../src/mods')
 const pkg = require('../package.json')
 
 const HELP = `edfmk ${pkg.version} — framework de mods para EDF6
 
 Uso:
+  edfmk                              (o doble clic en el .exe) prepara todo y muestra el estado
   edfmk init [carpeta del juego]     crea modkit.json, mods/ y vanilla/ (en la carpeta del juego,
                                      los crea en ModKit/ para no mezclarlos con Mods/)
   edfmk list                         mods encontrados y orden de carga
@@ -22,6 +25,9 @@ Uso:
   edfmk paths <archivo.sgo> [texto]  lista las rutas y valores de un SGO/DSGO (filtra por texto)
   edfmk diff <original> <modificado> imprime las operaciones que llevan de uno al otro
   edfmk import <carpeta> <id>        convierte un mod de archivos completos en mods/<id>
+  edfmk extract <ruta> [...]         saca archivos originales de Root.cpk a vanilla/
+
+Sin --config, busca modkit.json en la carpeta actual o usa <juego>/ModKit (lo crea si no existe).
 
 Opciones:
   --config <modkit.json>             usar otro archivo de configuración
@@ -37,6 +43,12 @@ function parseArgs(argv) {
     else args.push(a)
   }
   return { opts, args }
+}
+
+function workspace(opts) {
+  const { cfg, created } = ensureWorkspace({ configPath: opts.config })
+  if (created) console.log(`Creado el workspace en ${path.dirname(cfg.file)}`)
+  return cfg
 }
 
 function activeMods(cfg) {
@@ -64,7 +76,7 @@ const commands = {
   },
 
   list(args, opts) {
-    const cfg = config.load(opts.config)
+    const cfg = workspace(opts)
     const all = loadMods(cfg.modsDir)
     if (!all.length) console.log(`No hay mods en ${cfg.modsDir}`)
     const order = new Map(cfg.load.map((id, i) => [id, i + 1]))
@@ -78,10 +90,10 @@ const commands = {
   },
 
   build(args, opts) {
-    const cfg = config.load(opts.config)
+    const cfg = workspace(opts)
     if (!cfg.outDir) throw new Error('Falta "gameDir" u "outDir" en modkit.json')
     const { active } = activeMods(cfg)
-    const result = build(active, { vanillaDir: cfg.vanillaDir })
+    const result = build(active, { vanilla: vanillaFor(cfg) })
     printResult(result)
     if (result.errors.length) {
       console.log(`\nNo se escribió nada: ${result.errors.length} error(es).`)
@@ -95,8 +107,27 @@ const commands = {
   },
 
   clean(args, opts) {
-    const cfg = config.load(opts.config)
+    const cfg = workspace(opts)
     for (const line of clean(cfg.outDir)) console.log(line)
+  },
+
+  extract(args, opts) {
+    if (!args.length) throw new Error('Uso: edfmk extract <ruta en el juego> [...]')
+    const cfg = workspace(opts)
+    const vanilla = vanillaFor(cfg)
+    for (const rel of args) {
+      const found = vanilla.get(fileKey(rel))
+      if (!found) throw new Error(`"${rel}" no está en los CPK del juego`)
+      console.log(found.abs)
+    }
+  },
+
+  status(args, opts) {
+    const cfg = workspace(opts)
+    const all = loadMods(cfg.modsDir)
+    console.log(`Juego:  ${cfg.gameDir}`)
+    console.log(`Mods:   ${cfg.modsDir} (${all.length} instalados, ${cfg.load.length} activos)`)
+    console.log('\nPara ver los comandos: edfmk help')
   },
 
   paths(args) {
@@ -122,10 +153,10 @@ const commands = {
   import(args, opts) {
     const [src, id] = args
     if (!src || !id) throw new Error('Uso: edfmk import <carpeta> <id>')
-    const cfg = config.load(opts.config)
+    const cfg = workspace(opts)
     const dest = path.join(cfg.modsDir, id)
     if (fs.existsSync(dest)) throw new Error(`${dest} ya existe`)
-    const r = importFolder(path.resolve(src), dest, { vanillaDir: cfg.vanillaDir, id })
+    const r = importFolder(path.resolve(src), dest, { vanilla: vanillaFor(cfg), id })
     for (const n of r.notes) console.log(`nota: ${n}`)
     for (const f of r.patched) console.log(`parche  ${f}`)
     for (const f of r.copied) console.log(`copia   ${f}`)
@@ -137,8 +168,10 @@ const commands = {
 function main() {
   const [cmd, ...rest] = process.argv.slice(2)
   const { opts, args } = parseArgs(rest)
-  if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') return console.log(HELP)
+  if (cmd === 'help' || cmd === '--help' || cmd === '-h') return console.log(HELP)
   if (cmd === '--version' || cmd === '-v') return console.log(pkg.version)
+  // Doble clic en el .exe: sin argumentos.
+  if (!cmd) return interactive(opts)
   const fn = commands[cmd]
   if (!fn) {
     console.error(`Comando desconocido: ${cmd}\n\n${HELP}`)
@@ -150,6 +183,20 @@ function main() {
   } catch (e) {
     console.error(`error: ${e.message}`)
     process.exitCode = 1
+  }
+}
+
+function interactive(opts) {
+  try {
+    commands.status([], opts)
+  } catch (e) {
+    console.error(`error: ${e.message}`)
+    process.exitCode = 1
+  }
+  // Abierto con doble clic: que la ventana no se cierre antes de poder leerla.
+  if (isPackaged()) {
+    console.log('\nApretá Enter para salir.')
+    process.stdin.once('data', () => process.exit())
   }
 }
 

@@ -1,0 +1,27 @@
+name: release
+
+# Al pushear un tag v* (por ejemplo: git tag v0.2.0 && git push origin v0.2.0) arma el .exe y
+# lo publica en GitHub Releases.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:exe
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/EDF6-ModKit.exe
+          generate_release_notes: true
