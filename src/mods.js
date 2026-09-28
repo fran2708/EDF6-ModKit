@@ -1,8 +1,8 @@
-// Carga de mods desde disco.
+// Loading mods from disk.
 //
-// Un mod es una carpeta:
-//   mods/<id>/mod.json      metadatos + parches
-//   mods/<id>/files/...     archivos completos, con la misma estructura que la carpeta Mods del juego
+// A mod is a folder:
+//   mods/<id>/mod.json      metadata + patches
+//   mods/<id>/files/...     whole files, with the same structure as the game's Mods folder
 //
 // mod.json:
 //   {
@@ -19,7 +19,7 @@ const fs = require('fs')
 const path = require('path')
 const { validate } = require('./patch')
 
-// Clave para comparar rutas de archivos del juego: Windows no distingue mayúsculas.
+// Key used to compare game file paths: Windows is case-insensitive.
 function fileKey(rel) {
   return rel.replace(/\\/g, '/').replace(/^\/+/, '').toUpperCase()
 }
@@ -45,17 +45,17 @@ function loadMod(dir) {
   try {
     manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
   } catch (e) {
-    throw new Error(`${manifestPath}: JSON inválido (${e.message})`)
+    throw new Error(`${manifestPath}: invalid JSON (${e.message})`)
   }
   const id = manifest.id || path.basename(dir)
   const patches = manifest.patches || {}
   for (const [file, ops] of Object.entries(patches)) {
-    if (!Array.isArray(ops)) throw new Error(`${id}: los parches de "${file}" tienen que ser una lista`)
+    if (!Array.isArray(ops)) throw new Error(`${id}: the patches for "${file}" must be a list`)
     ops.forEach((op, i) => {
       try {
         validate(op)
       } catch (e) {
-        throw new Error(`${id}: ${file} operación #${i + 1}: ${e.message}`)
+        throw new Error(`${id}: ${file} operation #${i + 1}: ${e.message}`)
       }
     })
   }
@@ -81,7 +81,7 @@ function loadMods(modsDir) {
     .sort((a, b) => a.id.localeCompare(b.id))
 }
 
-// Índice de una carpeta con archivos del juego: clave normalizada -> { rel, abs }.
+// Index of a folder with game files: normalized key -> { rel, abs }.
 function indexDir(dir) {
   const index = new Map()
   for (const rel of listFiles(dir)) index.set(fileKey(rel), { rel, abs: path.join(dir, rel) })

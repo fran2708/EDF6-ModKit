@@ -1,12 +1,12 @@
-// Instalar mods desde un .zip, tal como vienen de Nexus u otros sitios.
+// Installing mods from a .zip, as they come from Nexus or other sites.
 //
-// Dos casos:
-//   - el zip trae uno o más mod.json: son mods del ModKit y se copian tal cual
-//   - si no, es un mod "de archivos completos": hay que averiguar a qué archivo del juego
-//     corresponde cada cosa, saltando carpetas envoltorio ("MiMod/", "Mods/") y detectando
-//     variantes ("Armor x2/", "Armor x10/"), que se ofrecen para elegir una
+// Two cases:
+//   - the zip has one or more mod.json files: they are ModKit mods and are copied as is
+//   - otherwise it's a "whole file" mod: we have to work out which game file each entry maps
+//     to, skipping wrapper folders ("MyMod/", "Mods/") and detecting variants ("Armor x2/",
+//     "Armor x10/"), which are offered so the user picks one
 //
-// Para ubicar cada archivo se usa el índice de los CPK del juego (vanilla.relOf / topDirs).
+// Each file is located using the index of the game's CPKs (vanilla.relOf / topDirs).
 
 const fs = require('fs')
 const os = require('os')
@@ -17,7 +17,7 @@ const { importFolder } = require('./importer')
 
 const IGNORED = /(^|\/)(__MACOSX\/|\.DS_Store$|Thumbs\.db$)/i
 
-// Rutas seguras dentro del zip: sin absolutas, sin "..", con / como separador.
+// Safe paths inside the zip: no absolute paths, no "..", / as separator.
 function safeEntries(buffer) {
   const raw = unzipSync(new Uint8Array(buffer))
   const out = []
@@ -26,24 +26,24 @@ function safeEntries(buffer) {
     if (rel.endsWith('/') || IGNORED.test(rel)) continue
     const segs = rel.split('/').filter(s => s && s !== '.')
     if (segs.some(s => s === '..') || /^[a-z]:/i.test(segs[0] || '')) {
-      throw new Error(`El zip tiene una ruta insegura: ${name}`)
+      throw new Error(`The zip contains an unsafe path: ${name}`)
     }
     out.push({ segs, data: Buffer.from(data) })
   }
   return out
 }
 
-// Ubica un archivo en el juego. Devuelve { gameRel, label } o null.
-//   gameRel: ruta en el juego (DEFAULTPACKAGE/CONFIG.SGO)
-//   label:   lo que sobra (envoltorios + carpeta de variante), para agrupar variantes
+// Locates a file in the game. Returns { gameRel, label } or null.
+//   gameRel: path in the game (DEFAULTPACKAGE/CONFIG.SGO)
+//   label:   whatever is left over (wrappers + variant folder), used to group variants
 function locate(segs, vanilla, topDirs, exts = vanilla.extensions()) {
   const n = segs.length
-  // 1. un sufijo de la ruta es un archivo conocido: MiMod/WEAPON/A.SGO
+  // 1. a suffix of the path is a known file: MyMod/WEAPON/A.SGO
   for (let k = 0; k < n; k++) {
     const rel = vanilla.relOf(fileKey(segs.slice(k).join('/')))
     if (rel) return { gameRel: rel, label: segs.slice(0, k).join('/') }
   }
-  // 2. sacando una carpeta intermedia es un archivo conocido: DEFAULTPACKAGE/Armor x10/CONFIG.SGO
+  // 2. dropping one inner folder gives a known file: DEFAULTPACKAGE/Armor x10/CONFIG.SGO
   for (let k = 0; k < n; k++) {
     for (let j = k + 1; j < n - 1; j++) {
       const rest = [...segs.slice(k, j), ...segs.slice(j + 1)]
@@ -51,15 +51,15 @@ function locate(segs, vanilla, topDirs, exts = vanilla.extensions()) {
       if (rel) return { gameRel: rel, label: [...segs.slice(0, k), segs[j]].join('/') }
     }
   }
-  // 3. archivo nuevo dentro de una carpeta del juego: MiMod/UI/nueva.dds. Solo con extensiones
-  //    que el juego usa en esa carpeta, para no instalar readmes o los .json de sgott.
+  // 3. a new file inside a game folder: MyMod/UI/new.dds. Only with extensions the game uses in
+  //    that folder, so readmes or sgott's .json files don't get installed.
   const ext = /\.[^.]+$/.exec(segs[n - 1])
   const top = segs.findIndex((s, i) => i < n - 1 && topDirs.has(s.toUpperCase()))
   if (top === -1 || !ext || !exts.get(segs[top].toUpperCase())?.has(ext[0].toUpperCase())) return null
   return { gameRel: segs.slice(top).join('/'), label: segs.slice(0, top).join('/') }
 }
 
-// Analiza el zip sin instalar nada.
+// Analyzes the zip without installing anything.
 function analyzeZip(buffer, vanilla) {
   const entries = safeEntries(buffer)
   const manifests = entries.filter(e => e.segs.at(-1).toLowerCase() === 'mod.json')
@@ -92,7 +92,7 @@ function analyzeZip(buffer, vanilla) {
     if (!groups.has(at.label)) groups.set(at.label, [])
     groups.get(at.label).push({ rel: at.gameRel, data: e.data })
   }
-  if (!groups.size) throw new Error('No encontré archivos del juego en el zip')
+  if (!groups.size) throw new Error('No game files found in the zip')
   return { kind: 'legacy', groups, ignored }
 }
 
@@ -117,13 +117,13 @@ function writeFiles(dir, files) {
   }
 }
 
-// Nombre legible para una variante: la última carpeta de su etiqueta.
+// Readable name for a variant: the last folder of its label.
 function variantName(label) {
   return label ? label.split('/').at(-1) : '(base)'
 }
 
-// Instala el zip. Si es un mod viejo con varias variantes y no se eligió una, devuelve
-// { variants } para que el usuario elija y se vuelva a llamar con `variant`.
+// Installs the zip. If it's an old-style mod with several variants and none was picked, returns
+// { variants } so the user can choose and call again with `variant`.
 function installZip(buffer, { zipName = 'mod.zip', modsDir, vanilla, variant } = {}) {
   const analysis = analyzeZip(buffer, vanilla)
   const baseName = slug(path.basename(zipName))
@@ -143,7 +143,7 @@ function installZip(buffer, { zipName = 'mod.zip', modsDir, vanilla, variant } =
   if (labels.length === 1) {
     label = labels[0]
   } else if (variant !== undefined) {
-    if (!analysis.groups.has(variant)) throw new Error(`No existe la variante "${variant}"`)
+    if (!analysis.groups.has(variant)) throw new Error(`Variant "${variant}" does not exist`)
     label = variant
   } else {
     return {
@@ -155,17 +155,19 @@ function installZip(buffer, { zipName = 'mod.zip', modsDir, vanilla, variant } =
     }
   }
 
-  // Se arma una carpeta con la estructura del juego y se importa como cualquier mod viejo.
+  // Build a folder with the game's structure and import it like any old-style mod.
   const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'edfmk-zip-'))
   try {
     writeFiles(staging, analysis.groups.get(label))
     const suffix = labels.length > 1 ? ` (${variantName(label)})` : ''
     const name = path.basename(zipName).replace(/\.zip$/i, '') + suffix
     const id = uniqueId(modsDir, slug(name))
-    const source = path.basename(zipName) + (labels.length > 1 ? ` (${variantName(label)})` : '')
+    const source = path.basename(zipName) + suffix
     const result = importFolder(staging, path.join(modsDir, id), { vanilla, id, name, source })
     const notes = [...result.notes]
-    if (analysis.ignored.length) notes.push(`Se ignoraron ${analysis.ignored.length} archivo(s) que no son del juego: ${analysis.ignored.slice(0, 3).join(', ')}`)
+    if (analysis.ignored.length) {
+      notes.push(`Ignored ${analysis.ignored.length} file(s) that are not game files: ${analysis.ignored.slice(0, 3).join(', ')}`)
+    }
     return { installed: [id], notes }
   } finally {
     fs.rmSync(staging, { recursive: true, force: true })

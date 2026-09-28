@@ -1,6 +1,6 @@
-// Convierte un mod "de archivos completos" (una carpeta con la estructura de Mods) en un mod del
-// modkit: los SGO/DSGO que se pueden comparar con el original pasan a ser parches, el resto se
-// copia a files/ tal cual.
+// Turns a "whole file" mod (a folder with the Mods structure) into a ModKit mod: SGO/DSGO files
+// that can be compared with the original become patches, everything else is copied to files/
+// as is.
 
 const fs = require('fs')
 const path = require('path')
@@ -26,9 +26,9 @@ function importFolder(srcDir, destDir, { vanilla, vanillaDir, id, name, source }
         else patches[base.rel] = ops
         continue
       }
-      notes.push(`${rel}: ${warnings[0]}; se copia completo`)
+      notes.push(`${rel}: ${warnings[0]}; copied as a whole file`)
     } else if (codec.isPatchable(buffer)) {
-      notes.push(`${rel}: no está en los originales; se copia completo`)
+      notes.push(`${rel}: not among the originals; copied as a whole file`)
     }
     const dst = path.join(destDir, 'files', rel)
     fs.mkdirSync(path.dirname(dst), { recursive: true })
@@ -40,7 +40,7 @@ function importFolder(srcDir, destDir, { vanilla, vanillaDir, id, name, source }
     name: name || id || path.basename(srcDir),
     version: '1.0.0',
     author: '',
-    description: `Importado de ${source || path.basename(srcDir)}`,
+    description: `Imported from ${source || path.basename(srcDir)}`,
     patches,
   }
   fs.mkdirSync(destDir, { recursive: true })

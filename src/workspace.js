@@ -1,10 +1,10 @@
-// Encuentra (o crea) el workspace sin que el usuario tenga que configurar nada.
+// Finds (or creates) the workspace without the user having to configure anything.
 //
-// Orden:
-//   1. --config explícito
-//   2. un modkit.json en la carpeta actual
-//   3. la carpeta del juego (donde está EDF6.exe): la del .exe, la actual o la de arriba de la
-//      actual (por si se corre desde ModKit/). Usa <juego>/ModKit y lo crea si no existe.
+// Order:
+//   1. an explicit --config
+//   2. a modkit.json in the current folder
+//   3. the game folder (where EDF6.exe is): the exe's folder, the current one or its parent
+//      (in case it's run from ModKit/). Uses <game>/ModKit and creates it if it doesn't exist.
 
 const fs = require('fs')
 const path = require('path')
@@ -40,8 +40,8 @@ function ensureWorkspace({ configPath, cwd = process.cwd(), exeDir } = {}) {
   const gameDir = findGameDir({ cwd, exeDir })
   if (!gameDir) {
     throw new Error(
-      `No encontré el juego. Poné EDF6-ModKit.exe en la carpeta de Earth Defense Force 6 (donde está ${GAME_EXE}) ` +
-      'y abrilo desde ahí.',
+      `Game not found. Put EDF6-ModKit.exe in the Earth Defense Force 6 folder (where ${GAME_EXE} is) ` +
+      'and open it from there.',
     )
   }
   const file = path.join(gameDir, config.WORKSPACE, config.FILE)

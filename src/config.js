@@ -1,4 +1,4 @@
-// modkit.json: dónde está el juego, los originales, los mods y en qué orden se cargan.
+// modkit.json: where the game, the originals and the mods are, and the order mods load in.
 //
 //   {
 //     "gameDir": "..",
@@ -7,13 +7,13 @@
 //     "load": ["more-slots", "armor-x10"]
 //   }
 //
-// Las rutas relativas se resuelven desde la carpeta del modkit.json. `load` es la lista de mods
-// activos en orden de carga: si dos chocan, gana el que está más abajo. `outDir` es opcional
-// (por defecto <gameDir>/Mods).
+// Relative paths are resolved from the folder containing modkit.json. `load` lists the active
+// mods in load order: when two conflict, the one further down wins. `outDir` is optional
+// (defaults to <gameDir>/Mods).
 //
-// La carpeta de salida (Mods del juego) no puede superponerse con la de mods ni con la de
-// originales: en Windows "mods" y "Mods" son la misma carpeta, y el build/clean terminaría
-// escribiendo o borrando adentro de las fuentes.
+// The output folder (the game's Mods) must not overlap with the mods or originals folders: on
+// Windows "mods" and "Mods" are the same folder, and build/clean would end up writing or
+// deleting inside the sources.
 
 const fs = require('fs')
 const path = require('path')
@@ -24,7 +24,7 @@ const WORKSPACE = 'ModKit'
 function load(configPath) {
   const file = path.resolve(configPath || FILE)
   if (!fs.existsSync(file)) {
-    throw new Error(`No se encontró ${file}. Creá uno con "edfmk init".`)
+    throw new Error(`${file} not found. Create one with "edfmk init".`)
   }
   const raw = JSON.parse(fs.readFileSync(file, 'utf8'))
   const base = path.dirname(file)
@@ -47,13 +47,13 @@ function save(config) {
   fs.writeFileSync(config.file, JSON.stringify(config.raw, null, 2) + '\n')
 }
 
-// Forma comparable de una ruta: absoluta, sin barra final y, en Windows, sin distinguir mayúsculas.
+// Comparable form of a path: absolute, no trailing slash and, on Windows, case-insensitive.
 function norm(p, platform = process.platform) {
   const abs = path.resolve(p).replace(/[\\/]+$/, '')
   return platform === 'win32' ? abs.toLowerCase() : abs
 }
 
-// true si a y b son la misma carpeta o una está adentro de la otra.
+// true if a and b are the same folder or one is inside the other.
 function overlaps(a, b, platform) {
   const x = norm(a, platform)
   const y = norm(b, platform)
@@ -69,15 +69,15 @@ function checkLayout(cfg, platform) {
     for (const [name, dir] of dirs) {
       if (overlaps(dir, cfg.outDir, platform)) {
         throw new Error(
-          `"${name}" (${dir}) se superpone con la carpeta Mods del juego (${cfg.outDir}). ` +
-          'El build escribe y borra en Mods, así que las fuentes tienen que estar en otro lado. ' +
-          `Usá un workspace aparte, por ejemplo <juego>/${WORKSPACE} con "gameDir": "..".`,
+          `"${name}" (${dir}) overlaps with the game's Mods folder (${cfg.outDir}). ` +
+          'Build writes to and deletes from Mods, so the sources must live somewhere else. ' +
+          `Use a separate workspace, for example <game>/${WORKSPACE} with "gameDir": "..".`,
         )
       }
     }
   }
   if (overlaps(cfg.modsDir, cfg.vanillaDir, platform)) {
-    throw new Error(`"modsDir" (${cfg.modsDir}) y "vanillaDir" (${cfg.vanillaDir}) se superponen`)
+    throw new Error(`"modsDir" (${cfg.modsDir}) and "vanillaDir" (${cfg.vanillaDir}) overlap`)
   }
 }
 
@@ -85,8 +85,8 @@ function looksLikeGameDir(dir) {
   return fs.existsSync(path.join(dir, 'EDF6.exe')) || fs.existsSync(path.join(dir, 'Mods'))
 }
 
-// Crea modkit.json, mods/ y vanilla/. Si `dir` es la carpeta del juego, el workspace va en
-// <juego>/ModKit en vez de mezclarse con la carpeta Mods del juego.
+// Creates modkit.json, mods/ and vanilla/. If `dir` is the game folder, the workspace goes in
+// <game>/ModKit instead of mixing with the game's Mods folder.
 function init(dir, gameDirArg) {
   let workspace = path.resolve(dir)
   let gameDir = gameDirArg
@@ -94,12 +94,12 @@ function init(dir, gameDirArg) {
     gameDir = gameDir || '..'
     workspace = path.join(workspace, WORKSPACE)
   }
-  if (!gameDir) throw new Error('Indicá la carpeta del juego: edfmk init "<carpeta del juego>"')
+  if (!gameDir) throw new Error('Specify the game folder: edfmk init "<game folder>"')
 
   const file = path.join(workspace, FILE)
-  if (fs.existsSync(file)) throw new Error(`${file} ya existe`)
+  if (fs.existsSync(file)) throw new Error(`${file} already exists`)
   const raw = { gameDir, vanillaDir: 'vanilla', modsDir: 'mods', load: [] }
-  // Validar antes de crear nada.
+  // Validate before creating anything.
   const at = p => path.resolve(workspace, p)
   checkLayout({
     modsDir: at(raw.modsDir),
@@ -110,10 +110,11 @@ function init(dir, gameDirArg) {
   fs.mkdirSync(path.join(workspace, 'mods'), { recursive: true })
   fs.mkdirSync(path.join(workspace, 'vanilla'), { recursive: true })
   fs.writeFileSync(file, JSON.stringify(raw, null, 2) + '\n')
-  fs.writeFileSync(path.join(workspace, 'vanilla', 'LEEME.txt'),
-    'Poné acá los archivos originales del juego, extraídos de Root.cpk, con la misma\n' +
-    'estructura de carpetas que Mods (por ejemplo DEFAULTPACKAGE/CONFIG.SGO, WEAPON/...).\n' +
-    'El modkit aplica los parches sobre estos archivos.\n')
+  fs.writeFileSync(path.join(workspace, 'vanilla', 'README.txt'),
+    'Original game files go here, with the same folder structure as Mods (for example\n' +
+    'DEFAULTPACKAGE/CONFIG.SGO, WEAPON/...). The ModKit extracts them from Root.cpk on its own\n' +
+    'when a mod needs them; you can also place files here by hand. Patches are applied on top\n' +
+    'of these files.\n')
   return { file, workspace }
 }
 

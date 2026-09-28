@@ -1,18 +1,18 @@
-// Operaciones de parche sobre documentos SGO/DSGO (el JSON de sgott).
+// Patch operations on SGO/DSGO documents (sgott's JSON).
 //
-// Cada operación es { op, path, ... }:
-//   set     { value }   reemplaza el valor, manteniendo el tipo del nodo
-//           { node }    reemplaza el nodo entero ({ type, value }), para cambiar de tipo o listas
-//   mul     { value }   multiplica un número
-//   add     { value }   suma a un número
-//   append  { node | nodes }  agrega al final de una lista ptr
-//   insert  { index, node | nodes }  inserta en una lista ptr
-//   remove  {}          elimina el elemento de una lista
+// Every operation is { op, path, ... }:
+//   set     { value }   replaces the value, keeping the node's type
+//           { node }    replaces the whole node ({ type, value }), to change types or lists
+//   mul     { value }   multiplies a number
+//   add     { value }   adds to a number
+//   append  { node | nodes }  appends to a ptr list
+//   insert  { index, node | nodes }  inserts into a ptr list
+//   remove  {}          removes the list element
 //
-// `mul` y `add` se componen entre mods (x10 de un mod y x1.2 de otro dan x12), a diferencia de
-// `set`, donde el último gana. Por eso conviene usarlos para balance.
+// `mul` and `add` compose across mods (x10 from one mod and x1.2 from another give x12), unlike
+// `set`, where the last one wins. That's why they're the better choice for balance changes.
 //
-// apply() devuelve eventos { path, kind } que después usa conflicts.js para avisar de choques.
+// apply() returns { path, kind } events that conflicts.js later uses to report clashes.
 
 const { resolve } = require('./path')
 
@@ -20,24 +20,24 @@ const NUMERIC = new Set(['int', 'float', 'double'])
 const OPS = new Set(['set', 'mul', 'add', 'append', 'insert', 'remove'])
 
 function validate(op) {
-  if (!op || typeof op !== 'object') throw new Error('La operación debe ser un objeto')
-  if (!OPS.has(op.op)) throw new Error(`Operación desconocida "${op.op}" (válidas: ${[...OPS].join(', ')})`)
-  if (op.path === undefined) throw new Error(`"${op.op}" necesita "path"`)
+  if (!op || typeof op !== 'object') throw new Error('An operation must be an object')
+  if (!OPS.has(op.op)) throw new Error(`Unknown operation "${op.op}" (valid: ${[...OPS].join(', ')})`)
+  if (op.path === undefined) throw new Error(`"${op.op}" needs a "path"`)
   if ((op.op === 'mul' || op.op === 'add') && typeof op.value !== 'number') {
-    throw new Error(`"${op.op}" necesita un "value" numérico`)
+    throw new Error(`"${op.op}" needs a numeric "value"`)
   }
   if (op.op === 'set' && op.value === undefined && op.node === undefined) {
-    throw new Error('"set" necesita "value" o "node"')
+    throw new Error('"set" needs a "value" or a "node"')
   }
   if ((op.op === 'append' || op.op === 'insert') && !op.node && !op.nodes) {
-    throw new Error(`"${op.op}" necesita "node" o "nodes"`)
+    throw new Error(`"${op.op}" needs a "node" or "nodes"`)
   }
-  if (op.op === 'insert' && !Number.isInteger(op.index)) throw new Error('"insert" necesita un "index" entero')
+  if (op.op === 'insert' && !Number.isInteger(op.index)) throw new Error('"insert" needs an integer "index"')
 }
 
 function checkNode(node) {
   if (!node || typeof node !== 'object' || typeof node.type !== 'string' || !('value' in node)) {
-    throw new Error('Un nodo debe tener la forma { "type": ..., "value": ... }')
+    throw new Error('A node must have the shape { "type": ..., "value": ... }')
   }
   return node
 }
@@ -49,26 +49,26 @@ function clone(x) {
 function coerce(node, value) {
   if (NUMERIC.has(node.type)) {
     if (typeof value !== 'number' || !Number.isFinite(value)) {
-      throw new Error(`Se esperaba un número para un nodo ${node.type}`)
+      throw new Error(`Expected a number for a ${node.type} node`)
     }
     return node.type === 'int' ? Math.round(value) : value
   }
   if (node.type === 'string') {
-    if (typeof value !== 'string') throw new Error('Se esperaba un texto para un nodo string')
+    if (typeof value !== 'string') throw new Error('Expected text for a string node')
     return value
   }
-  throw new Error(`Para cambiar un nodo ${node.type} usá "node" en vez de "value"`)
+  throw new Error(`To change a ${node.type} node use "node" instead of "value"`)
 }
 
 function numeric(at, opName) {
   if (!NUMERIC.has(at.node.type)) {
-    throw new Error(`"${opName}" en "${at.path}": el nodo es ${at.node.type}, no un número`)
+    throw new Error(`"${opName}" at "${at.path}": the node is ${at.node.type}, not a number`)
   }
 }
 
 function listOf(at, opName) {
   if (at.node.type !== 'ptr' || !Array.isArray(at.node.value)) {
-    throw new Error(`"${opName}" en "${at.path}": el nodo es ${at.node.type}, no una lista`)
+    throw new Error(`"${opName}" at "${at.path}": the node is ${at.node.type}, not a list`)
   }
   return at.node.value
 }
@@ -83,8 +83,8 @@ function apply(doc, op) {
   const targets = resolve(doc, op.path)
   const events = []
 
-  // remove sobre varios elementos de la misma lista: de atrás para adelante, así los índices
-  // que faltan borrar no se corren.
+  // remove on several elements of the same list: back to front, so the indexes still to be
+  // removed don't shift.
   if (op.op === 'remove') {
     targets.sort((a, b) => b.index - a.index)
   }
@@ -119,14 +119,14 @@ function apply(doc, op) {
       case 'insert': {
         const list = listOf(at, 'insert')
         if (op.index < 0 || op.index > list.length) {
-          throw new Error(`"insert" en "${at.path}": índice ${op.index} fuera de rango (tiene ${list.length})`)
+          throw new Error(`"insert" at "${at.path}": index ${op.index} out of range (it has ${list.length})`)
         }
         list.splice(op.index, 0, ...newNodes(op))
         events.push({ path: at.path, kind: 'reshape' })
         break
       }
       case 'remove': {
-        if (at.list === doc.variables) throw new Error(`No se puede eliminar la variable "${at.path}"`)
+        if (at.list === doc.variables) throw new Error(`Variable "${at.path}" cannot be removed`)
         at.list.splice(at.index, 1)
         const parent = at.path.slice(0, at.path.lastIndexOf('/'))
         events.push({ path: parent, kind: 'reshape' })

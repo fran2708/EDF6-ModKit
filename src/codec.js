@@ -1,5 +1,5 @@
-// Lectura y escritura de SGO/DSGO. El trabajo pesado lo hace sgott; este módulo solo
-// le arma el "state" que espera y decide qué conversor usar según el magic del archivo.
+// Reading and writing SGO/DSGO. The heavy lifting is done by sgott; this module just builds the
+// "state" it expects and picks the converter from the file's magic.
 const fs = require('fs')
 const globals = require('sgott/globals.js')
 const compiler = require('sgott/converters/compiler.js')
@@ -32,11 +32,11 @@ function isPatchable(buffer) {
 
 function decode(buffer) {
   const format = formatOf(buffer)
-  if (!format) throw new Error('No es un archivo SGO/DSGO')
+  if (!format) throw new Error('Not an SGO/DSGO file')
   const doc = format === 'dsgo'
     ? globals.decompilers.dsgo(buffer, state())
     : globals.decompilers.sgo(decompiler, buffer, state())
-  // sgott devuelve algunos objetos con prototipos propios; los normalizamos a JSON plano.
+  // sgott returns some objects with their own prototypes; normalize them to plain JSON.
   const plain = JSON.parse(JSON.stringify(doc))
   plain.format = format.toUpperCase()
   return plain

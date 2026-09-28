@@ -1,7 +1,7 @@
 name: release
 
-# Al pushear un tag v* (por ejemplo: git tag v0.2.0 && git push origin v0.2.0) arma el .exe y
-# lo publica en GitHub Releases.
+# Pushing a v* tag (for example: git tag v0.3.0 && git push origin v0.3.0) builds the .exe and
+# publishes it on GitHub Releases.
 on:
   push:
     tags: ['v*']

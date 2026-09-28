@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -81,44 +81,44 @@
   </header>
 
   <section class="panel status">
-    <span id="badge" class="badge">Cargando…</span>
+    <span id="badge" class="badge">Loading…</span>
     <div class="actions">
-      <button id="restore">Restaurar original</button>
-      <button id="apply" class="primary">Aplicar</button>
+      <button id="restore">Restore original</button>
+      <button id="apply" class="primary">Apply</button>
     </div>
   </section>
 
   <section class="panel">
     <h2>Mods</h2>
-    <p class="muted" style="margin:-4px 0 8px">Tildá los que querés usar. Arrastralos para cambiar el orden: si dos mods chocan, gana el de más abajo.</p>
+    <p class="muted" style="margin:-4px 0 8px">Tick the ones you want to use. Drag them to change the order: if two mods clash, the one further down wins.</p>
     <ul class="mods" id="mods"></ul>
   </section>
 
   <label class="drop" id="drop">
     <input type="file" id="file" accept=".zip" hidden>
-    <strong>Soltá acá el .zip de un mod</strong> o hacé clic para elegirlo.<br>
-    <span class="muted">Sirven los mods de Nexus que reemplazan archivos: se convierten solos para que se combinen.</span>
+    <strong>Drop a mod’s .zip here</strong> or click to choose it.<br>
+    <span class="muted">Nexus mods that replace files work too: they are converted automatically so they can be combined.</span>
   </label>
 
   <section class="panel" id="issuesPanel" hidden>
-    <h2>Avisos</h2>
+    <h2>Warnings</h2>
     <ul class="issues" id="issues"></ul>
   </section>
 
   <section class="panel" id="logPanel" hidden>
-    <h2>Último cambio</h2>
+    <h2>Last change</h2>
     <pre class="log" id="log"></pre>
   </section>
 </main>
 
 <dialog id="variants">
   <form method="dialog">
-    <h2 style="margin-top:0">Este mod trae varias versiones</h2>
-    <p class="muted">Elegí cuál querés instalar.</p>
+    <h2 style="margin-top:0">This mod comes in several versions</h2>
+    <p class="muted">Choose the one you want to install.</p>
     <div id="variantList"></div>
     <div class="actions" style="justify-content:flex-end;margin-top:12px">
-      <button value="cancel">Cancelar</button>
-      <button value="ok" class="primary">Instalar</button>
+      <button value="cancel">Cancel</button>
+      <button value="ok" class="primary">Install</button>
     </div>
   </form>
 </dialog>
@@ -170,9 +170,9 @@ function nameOf(id) {
   return state.mods.find(m => m.id === id)?.name || id
 }
 
-// Los mensajes del build usan ids entre comillas; se muestran con el nombre del mod.
+// Build messages quote mod ids; show them with the mod name instead.
 function humanize(text) {
-  return text.replace(/"([^"]+)"/g, (all, id) => (state.mods.some(m => m.id === id) ? `«${nameOf(id)}»` : all))
+  return text.replace(/"([^"]+)"/g, (all, id) => (state.mods.some(m => m.id === id) ? `“${nameOf(id)}”` : all))
 }
 
 function render() {
@@ -182,45 +182,45 @@ function render() {
   const badge = $('badge')
   if (p.errors.length) {
     badge.className = 'badge err'
-    badge.textContent = `No se puede aplicar: ${p.errors.length} error(es)`
+    badge.textContent = `Can’t apply: ${p.errors.length} error${p.errors.length === 1 ? '' : 's'}`
   } else if (p.pending) {
     badge.className = 'badge warn'
-    badge.textContent = `Hay cambios sin aplicar (${p.pending} archivo${p.pending === 1 ? '' : 's'})`
+    badge.textContent = `Changes not applied yet (${p.pending} file${p.pending === 1 ? '' : 's'})`
   } else {
     badge.className = 'badge ok'
-    badge.textContent = state.load.length ? 'Todo aplicado: listo para jugar' : 'Sin mods activos'
+    badge.textContent = state.load.length ? 'All applied: ready to play' : 'No active mods'
   }
   $('apply').disabled = busy || !!p.errors.length || !p.pending
   $('restore').disabled = busy
 
-  // Activos en su orden, después los inactivos por nombre.
+  // Active mods in load order, then inactive ones by name.
   const active = state.load.map(id => state.mods.find(m => m.id === id)).filter(Boolean)
   const inactive = state.mods.filter(m => !state.load.includes(m.id)).sort((a, b) => a.name.localeCompare(b.name))
   const list = $('mods')
   list.innerHTML = ''
-  if (!state.mods.length) list.innerHTML = '<li class="empty">Todavía no hay mods. Soltá un .zip abajo para agregar uno.</li>'
+  if (!state.mods.length) list.innerHTML = '<li class="empty">No mods yet. Drop a .zip below to add one.</li>'
   for (const m of [...active, ...inactive]) {
     const on = state.load.includes(m.id)
     const li = document.createElement('li')
     li.dataset.id = m.id
     li.draggable = on
     li.innerHTML = `
-      <span class="handle" title="Arrastrar">${on ? '⋮⋮' : ''}</span>
+      <span class="handle" title="Drag">${on ? '⋮⋮' : ''}</span>
       <span class="pos">${on ? state.load.indexOf(m.id) + 1 : ''}</span>
-      <input type="checkbox" ${on ? 'checked' : ''} aria-label="Activar">
+      <input type="checkbox" ${on ? 'checked' : ''} aria-label="Enable">
       <div class="info">
         <div class="name"></div>
         <div class="desc"></div>
       </div>
       <span class="btns">
-        ${on ? '<button class="icon up" title="Subir">▲</button><button class="icon down" title="Bajar">▼</button>' : ''}
-        <button class="icon del" title="Quitar el mod">✕</button>
+        ${on ? '<button class="icon up" title="Move up">▲</button><button class="icon down" title="Move down">▼</button>' : ''}
+        <button class="icon del" title="Remove the mod">✕</button>
       </span>`
     li.querySelector('.name').textContent = `${m.name}${m.version ? ' ' + m.version : ''}`
-    li.querySelector('.desc').textContent = m.description || `${m.operations} cambio(s), ${m.files} archivo(s)`
+    li.querySelector('.desc').textContent = m.description || `${m.operations} change(s), ${m.files} file(s)`
     li.querySelector('input').onchange = e => setLoad(e.target.checked ? [...state.load, m.id] : state.load.filter(x => x !== m.id))
     li.querySelector('.del').onclick = () => {
-      if (confirm(`¿Quitar «${m.name}»? Se borra de la carpeta ModKit/mods.`)) run(async () => (state = await api('POST', '/api/remove', { id: m.id })))
+      if (confirm(`Remove “${m.name}”? It will be deleted from the ModKit/mods folder.`)) run(async () => (state = await api('POST', '/api/remove', { id: m.id })))
     }
     if (on) {
       li.querySelector('.up').onclick = () => move(m.id, -1)
@@ -231,7 +231,7 @@ function render() {
   wireDrag()
 
   const items = [
-    ...p.errors.map(e => ({ cls: 'error', text: `«${nameOf(e.mod)}»: ${e.message}`, where: e.file })),
+    ...p.errors.map(e => ({ cls: 'error', text: `“${nameOf(e.mod)}”: ${e.message}`, where: e.file })),
     ...p.conflicts.map(c => ({ cls: 'conflict', text: humanize(c.message), where: c.file + (c.path ? ` → ${c.path}` : '') })),
     ...p.notes.map(n => ({ cls: 'conflict', text: humanize(n), where: '' })),
   ]
@@ -293,21 +293,21 @@ function showLog(title, lines) {
 $('apply').onclick = () => run(async () => {
   const r = await api('POST', '/api/apply')
   state = r.state
-  showLog(r.ok ? 'Aplicado. Ya podés abrir el juego.' : 'No se aplicó: revisá los avisos.', r.log)
-  if (r.ok) toast('Listo: cambios aplicados')
+  showLog(r.ok ? 'Applied. You can start the game now.' : 'Not applied: check the warnings.', r.log)
+  if (r.ok) toast('Done: changes applied')
 })
 
 $('restore').onclick = () => {
-  if (!confirm('¿Quitar todo lo que aplicó el ModKit y dejar la carpeta Mods como estaba antes?')) return
+  if (!confirm('Remove everything the ModKit applied and put the Mods folder back the way it was?')) return
   run(async () => {
     const r = await api('POST', '/api/restore')
     state = r.state
-    showLog('Restaurado.', r.log)
+    showLog('Restored.', r.log)
   })
 }
 
 async function importZip(file) {
-  if (!/\.zip$/i.test(file.name)) return toast('Tiene que ser un archivo .zip')
+  if (!/\.zip$/i.test(file.name)) return toast('It has to be a .zip file')
   await run(async () => {
     const buffer = await file.arrayBuffer()
     let r = await api('POST', '/api/import?name=' + encodeURIComponent(file.name), buffer, true)
@@ -317,7 +317,7 @@ async function importZip(file) {
       r = await api('POST', '/api/import/choose', { importId: r.importId, variant })
     }
     state = r.state
-    showLog(`Instalado: ${r.installed.map(nameOf).join(', ')}. Tildalo en la lista para activarlo.`, r.notes)
+    showLog(`Installed: ${r.installed.map(nameOf).join(', ')}. Tick it in the list to enable it.`, r.notes)
   })
 }
 

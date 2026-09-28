@@ -1,5 +1,5 @@
-// Servidor local de la interfaz. Escucha solo en 127.0.0.1 y exige un token aleatorio en cada
-// pedido, así otras páginas abiertas en el navegador no pueden mandarle órdenes.
+// Local server for the UI. Listens only on 127.0.0.1 and requires a random token on every
+// request, so other pages open in the browser can't send it commands.
 
 const fs = require('fs')
 const http = require('http')
@@ -13,7 +13,7 @@ const { deploy, clean, pendingChanges } = require('./deploy')
 const { installZip } = require('./zipimport')
 const { isPackaged, vanillaFor } = require('./workspace')
 
-const MAX_BODY = 1024 * 1024 * 1024 // 1 GB: hay mods de texturas grandes
+const MAX_BODY = 1024 * 1024 * 1024 // 1 GB: some texture mods are big
 
 function page() {
   if (isPackaged()) return require('node:sea').getAsset('index.html', 'utf8')
@@ -27,7 +27,7 @@ function readBody(req) {
     req.on('data', c => {
       size += c.length
       if (size > MAX_BODY) {
-        reject(new Error('El archivo es demasiado grande'))
+        reject(new Error('The file is too big'))
         req.destroy()
       } else {
         chunks.push(c)
@@ -39,7 +39,7 @@ function readBody(req) {
 }
 
 function createApp(configFile) {
-  const pendingZips = new Map() // id -> { buffer, zipName }, mientras el usuario elige variante
+  const pendingZips = new Map() // id -> { buffer, zipName }, while the user picks a variant
 
   const cfg = () => config.load(configFile)
 
@@ -91,7 +91,7 @@ function createApp(configFile) {
       const { load } = JSON.parse(body)
       const c = cfg()
       const ids = new Set(loadMods(c.modsDir).map(m => m.id))
-      if (!Array.isArray(load) || load.some(id => !ids.has(id))) throw new Error('Lista de mods inválida')
+      if (!Array.isArray(load) || load.some(id => !ids.has(id))) throw new Error('Invalid mod list')
       c.raw.load = [...new Set(load)]
       config.save(c)
       return state()
@@ -125,7 +125,7 @@ function createApp(configFile) {
     'POST /api/import/choose': async body => {
       const { importId, variant } = JSON.parse(body)
       const pending = pendingZips.get(importId)
-      if (!pending) throw new Error('La importación expiró; volvé a soltar el zip')
+      if (!pending) throw new Error('The import expired; drop the zip again')
       pendingZips.delete(importId)
       const c = cfg()
       const r = installZip(pending.buffer, {
@@ -138,7 +138,7 @@ function createApp(configFile) {
       const { id } = JSON.parse(body)
       const c = cfg()
       const mod = loadMods(c.modsDir).find(m => m.id === id)
-      if (!mod) throw new Error(`No existe el mod "${id}"`)
+      if (!mod) throw new Error(`Mod "${id}" does not exist`)
       fs.rmSync(mod.dir, { recursive: true, force: true })
       c.raw.load = (c.raw.load || []).filter(x => x !== id)
       config.save(c)
@@ -160,12 +160,12 @@ function startServer({ configFile, port = 0, token = crypto.randomBytes(16).toSt
     const url = new URL(req.url, 'http://127.0.0.1')
     try {
       if (req.method === 'GET' && url.pathname === '/') {
-        if (url.searchParams.get('t') !== token) return send(res, 403, 'Abrí el ModKit desde el EDF6-ModKit.exe', 'text/plain; charset=utf-8')
+        if (url.searchParams.get('t') !== token) return send(res, 403, 'Open the ModKit from EDF6-ModKit.exe', 'text/plain; charset=utf-8')
         return send(res, 200, app.page(), 'text/html; charset=utf-8')
       }
       const handler = app.routes[`${req.method} ${url.pathname}`]
-      if (!handler) return send(res, 404, { error: 'No existe' })
-      if (req.headers['x-token'] !== token) return send(res, 403, { error: 'Token inválido' })
+      if (!handler) return send(res, 404, { error: 'Not found' })
+      if (req.headers['x-token'] !== token) return send(res, 403, { error: 'Invalid token' })
       const body = req.method === 'POST' ? await readBody(req) : null
       send(res, 200, await handler(body, url))
     } catch (e) {

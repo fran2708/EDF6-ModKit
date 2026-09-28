@@ -1,8 +1,8 @@
-// Descompresión CRILAYLA, la compresión LZ que usan los CPK de CRI.
+// CRILAYLA decompression, the LZ compression used by CRI's CPK archives.
 //
-// Formato: "CRILAYLA" + tamaño descomprimido (u32 LE) + offset del header crudo (u32 LE) + datos
-// comprimidos + 0x100 bytes sin comprimir (el comienzo del archivo). Los datos comprimidos se leen
-// de atrás para adelante, bit a bit, y el resultado también se escribe de atrás para adelante.
+// Format: "CRILAYLA" + uncompressed size (u32 LE) + raw header offset (u32 LE) + compressed
+// data + 0x100 uncompressed bytes (the start of the file). The compressed data is read back to
+// front, bit by bit, and the output is also written back to front.
 
 const MAGIC = 'CRILAYLA'
 const RAW_HEADER = 0x100
@@ -13,7 +13,7 @@ function isCompressed(buffer) {
 }
 
 function decompress(src) {
-  if (!isCompressed(src)) throw new Error('No es un bloque CRILAYLA')
+  if (!isCompressed(src)) throw new Error('Not a CRILAYLA block')
   const uncompressedSize = src.readUInt32LE(8)
   const headerOffset = src.readUInt32LE(12)
   const out = Buffer.alloc(RAW_HEADER + uncompressedSize)
@@ -30,7 +30,7 @@ function decompress(src) {
     let produced = 0
     while (produced < count) {
       if (left === 0) {
-        if (input < 16) throw new Error('CRILAYLA: datos comprimidos truncados')
+        if (input < 16) throw new Error('CRILAYLA: truncated compressed data')
         pool = src[input--]
         left = 8
       }

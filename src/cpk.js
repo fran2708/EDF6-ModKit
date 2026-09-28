@@ -1,15 +1,15 @@
-// Lectura de archivos CPK de CRI (Root.cpk, Chunk01.cpk, ...), lo justo para extraer archivos
-// por ruta sin cargar el CPK entero en memoria.
+// Reading CRI CPK archives (Root.cpk, Chunk01.cpk, ...), just enough to extract files by path
+// without loading the whole CPK into memory.
 //
-// Un CPK tiene un header "CPK " seguido de una tabla @UTF con los offsets de las demás tablas;
-// la TOC ("TOC ") lista cada archivo con su carpeta, nombre, tamaño y offset. Las tablas @UTF
-// suelen venir enmascaradas con un XOR estándar de CRI.
+// A CPK has a "CPK " header followed by an @UTF table with the offsets of the other tables;
+// the TOC ("TOC ") lists every file with its folder, name, size and offset. @UTF tables are
+// usually masked with CRI's standard XOR.
 
 const fs = require('fs')
 const { decompress, isCompressed } = require('./crilayla')
 const { fileKey } = require('./mods')
 
-// --- tablas @UTF -----------------------------------------------------------------------------
+// --- @UTF tables -----------------------------------------------------------------------------
 
 function unmask(buffer) {
   const out = Buffer.from(buffer)
@@ -45,7 +45,7 @@ function readValue(buf, pos, type, strings, data) {
       const size = buf.readUInt32BE(pos + 4)
       return [buf.subarray(data + off, data + off + size), 8]
     }
-    default: throw new Error(`Tipo de columna @UTF desconocido: ${type}`)
+    default: throw new Error(`Unknown @UTF column type: ${type}`)
   }
 }
 
@@ -54,14 +54,14 @@ function cstring(buf, pos) {
   return buf.toString('utf8', pos, end === -1 ? buf.length : end)
 }
 
-// Parsea una tabla @UTF (enmascarada o no). Devuelve { name, rows: [{ columna: valor }] }.
+// Parses an @UTF table (masked or not). Returns { name, rows: [{ column: value }] }.
 function parseUtf(input) {
   let buf = input
   if (buf.toString('latin1', 0, 4) !== '@UTF') {
     buf = unmask(input)
-    if (buf.toString('latin1', 0, 4) !== '@UTF') throw new Error('No es una tabla @UTF')
+    if (buf.toString('latin1', 0, 4) !== '@UTF') throw new Error('Not an @UTF table')
   }
-  const base = 8 // los offsets son relativos al final de "@UTF" + tamaño
+  const base = 8 // offsets are relative to the end of "@UTF" + size
   const rowsOffset = base + buf.readUInt16BE(10)
   const strings = base + buf.readUInt32BE(12)
   const data = base + buf.readUInt32BE(16)
@@ -112,29 +112,29 @@ function readAt(fd, offset, length) {
   let done = 0
   while (done < length) {
     const n = fs.readSync(fd, buf, done, length - done, offset + done)
-    if (n === 0) throw new Error(`Fin de archivo inesperado leyendo ${length} bytes en ${offset}`)
+    if (n === 0) throw new Error(`Unexpected end of file reading ${length} bytes at ${offset}`)
     done += n
   }
   return buf
 }
 
-// Lee un chunk "XXXX" + flags(4) + tamaño(8) + tabla @UTF.
+// Reads a chunk: "XXXX" + flags(4) + size(8) + @UTF table.
 function readChunk(fd, offset, magic) {
   const head = readAt(fd, offset, 16)
   const got = head.toString('latin1', 0, 4)
-  if (got !== magic) throw new Error(`Se esperaba "${magic}" en ${offset} y hay "${got}"`)
+  if (got !== magic) throw new Error(`Expected "${magic}" at ${offset} but found "${got}"`)
   const size = Number(head.readBigUInt64LE(8))
   return parseUtf(readAt(fd, offset + 16, size))
 }
 
-// Índice de un CPK: Map(fileKey -> { rel, offset, size, extractSize }).
+// Index of a CPK: Map(fileKey -> { rel, offset, size, extractSize }).
 function readIndex(file) {
   const fd = fs.openSync(file, 'r')
   try {
     const header = readChunk(fd, 0, 'CPK ').rows[0]
-    if (!header.TocOffset) throw new Error(`${file} no tiene TOC con nombres de archivo`)
+    if (!header.TocOffset) throw new Error(`${file} has no TOC with file names`)
     const toc = readChunk(fd, header.TocOffset, 'TOC ')
-    // Los offsets de la TOC son relativos al comienzo de la TOC, o al del contenido si está antes.
+    // TOC offsets are relative to the start of the TOC, or of the content if that comes first.
     const base = Math.min(header.TocOffset, header.ContentOffset || header.TocOffset)
     const index = new Map()
     for (const row of toc.rows) {

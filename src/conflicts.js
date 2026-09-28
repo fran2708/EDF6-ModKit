@@ -1,13 +1,13 @@
-// Detecta choques entre mods a partir de los eventos que registró el build, en orden de carga.
+// Detects clashes between mods from the events the build recorded, in load order.
 //
-// Qué se considera conflicto (el build sigue igual; el último en el orden gana):
-//   - dos mods hacen `set` sobre la misma ruta con valores distintos
-//   - un mod hace `set` sobre algo que otro mod anterior escaló con mul/add (se pierde el escalado)
-//   - un mod reemplaza un nodo o lista entera (set/override) que tiene cambios de otro mod anterior
-//   - un mod inserta o elimina elementos de una lista y otro mod toca esa lista por índice
-//   - dos mods reemplazan el mismo archivo completo (archivos que no se pueden parchear)
+// What counts as a conflict (the build still goes ahead; the last one in load order wins):
+//   - two mods `set` the same path to different values
+//   - a mod `set`s something an earlier mod scaled with mul/add (the scaling is lost)
+//   - a mod replaces a whole node or list (set/override) that has changes from an earlier mod
+//   - a mod inserts or removes list elements and another mod touches that list by index
+//   - two mods replace the same whole file (files that can't be patched)
 //
-// Eventos: { mod, file, path, kind, value? } con kind en set | scale | append | reshape | override
+// Events: { mod, file, path, kind, value? } with kind in set | scale | append | reshape | override
 
 const { isAncestor } = require('./path')
 
@@ -31,7 +31,7 @@ function analyze(events) {
         file,
         path: null,
         mods: overrideMods,
-        message: `Varios mods reemplazan el archivo completo; queda el de "${overrideMods.at(-1)}"`,
+        message: `Several mods replace the whole file; "${overrideMods.at(-1)}" wins`,
       })
     }
 
@@ -44,7 +44,7 @@ function analyze(events) {
         for (const mod of lost) {
           conflicts.push({
             file, path: null, mods: [mod, later.mod],
-            message: `"${later.mod}" reemplaza el archivo completo y descarta los cambios de "${mod}"`,
+            message: `"${later.mod}" replaces the whole file and discards the changes from "${mod}"`,
           })
         }
         continue
@@ -56,29 +56,29 @@ function analyze(events) {
           if (e.path === later.path && e.kind === 'set' && !same(e.value, later.value)) {
             conflicts.push({
               file, path: later.path, mods: [e.mod, later.mod],
-              message: `"${e.mod}" y "${later.mod}" ponen valores distintos; queda el de "${later.mod}"`,
+              message: `"${e.mod}" and "${later.mod}" set different values; "${later.mod}" wins`,
             })
           } else if (e.path === later.path && e.kind === 'scale') {
             conflicts.push({
               file, path: later.path, mods: [e.mod, later.mod],
-              message: `"${later.mod}" fija un valor que "${e.mod}" multiplica o suma; se pierde el escalado de "${e.mod}"`,
+              message: `"${later.mod}" sets a fixed value that "${e.mod}" multiplies or adds to; the scaling from "${e.mod}" is lost`,
             })
           } else if (e.path === later.path && (e.kind === 'append' || e.kind === 'reshape')) {
             conflicts.push({
               file, path: later.path, mods: [e.mod, later.mod],
-              message: `"${later.mod}" reemplaza la lista y descarta los elementos que agregó o quitó "${e.mod}"`,
+              message: `"${later.mod}" replaces the list and discards the elements "${e.mod}" added or removed`,
             })
           } else if (isAncestor(later.path, e.path)) {
             conflicts.push({
               file, path: later.path, mods: [e.mod, later.mod],
-              message: `"${later.mod}" reemplaza "${later.path}" entero y descarta el cambio de "${e.mod}" en "${e.path}"`,
+              message: `"${later.mod}" replaces all of "${later.path}" and discards the change from "${e.mod}" at "${e.path}"`,
             })
           }
         }
       }
     }
 
-    // Cambios de forma en listas (insert/remove) contra rutas por índice de otros mods.
+    // Shape changes in lists (insert/remove) against other mods' index-based paths.
     const reshapes = list.filter(e => e.kind === 'reshape')
     for (const r of reshapes) {
       const touched = list.filter(e => e.mod !== r.mod && e.kind !== 'override' && isAncestor(r.path, e.path))
@@ -86,7 +86,7 @@ function analyze(events) {
       for (const mod of mods) {
         conflicts.push({
           file, path: r.path, mods: [r.mod, mod],
-          message: `"${r.mod}" inserta o elimina elementos en "${r.path}" y "${mod}" apunta a elementos por índice; pueden quedar corridos`,
+          message: `"${r.mod}" inserts or removes elements in "${r.path}" and "${mod}" points at elements by index; they may end up shifted`,
         })
       }
     }

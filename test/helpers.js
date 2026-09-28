@@ -8,7 +8,7 @@ const i = v => n('int', v)
 const s = v => n('string', v)
 const ptr = (...value) => n('ptr', value)
 
-// Documento parecido a DEFAULTPACKAGE/CONFIG.SGO, en chico.
+// A small document shaped like DEFAULTPACKAGE/CONFIG.SGO.
 function configDoc() {
   return {
     format: 'SGO',

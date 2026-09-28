@@ -12,7 +12,7 @@ function fakeGame() {
   return game
 }
 
-test('findGameDir: la carpeta del exe, la actual o la de arriba', () => {
+test('findGameDir: the exe folder, the current one or its parent', () => {
   const game = fakeGame()
   const other = tmpdir()
   assert.equal(findGameDir({ cwd: other, exeDir: game }), game)
@@ -21,7 +21,7 @@ test('findGameDir: la carpeta del exe, la actual o la de arriba', () => {
   assert.equal(findGameDir({ cwd: other }), null)
 })
 
-test('ensureWorkspace: crea <juego>/ModKit la primera vez y lo reutiliza', () => {
+test('ensureWorkspace: creates <game>/ModKit the first time and reuses it', () => {
   const game = fakeGame()
   const first = ensureWorkspace({ cwd: tmpdir(), exeDir: game })
   assert.equal(first.created, true)
@@ -32,12 +32,12 @@ test('ensureWorkspace: crea <juego>/ModKit la primera vez y lo reutiliza', () =>
   assert.equal(again.cfg.file, first.cfg.file)
 })
 
-test('ensureWorkspace: un modkit.json en la carpeta actual tiene prioridad', () => {
+test('ensureWorkspace: a modkit.json in the current folder takes priority', () => {
   const dir = tmpdir()
-  write(path.join(dir, 'modkit.json'), JSON.stringify({ gameDir: 'juego', load: [] }))
-  assert.equal(ensureWorkspace({ cwd: dir }).cfg.gameDir, path.join(dir, 'juego'))
+  write(path.join(dir, 'modkit.json'), JSON.stringify({ gameDir: 'game', load: [] }))
+  assert.equal(ensureWorkspace({ cwd: dir }).cfg.gameDir, path.join(dir, 'game'))
 })
 
-test('ensureWorkspace: sin juego, un mensaje claro', () => {
-  assert.throws(() => ensureWorkspace({ cwd: tmpdir(), exeDir: null }), /Poné EDF6-ModKit.exe/)
+test('ensureWorkspace: without a game, a clear message', () => {
+  assert.throws(() => ensureWorkspace({ cwd: tmpdir(), exeDir: null }), /Put EDF6-ModKit.exe/)
 })

@@ -9,12 +9,12 @@ function clone(x) {
   return JSON.parse(JSON.stringify(x))
 }
 
-test('diff: hojas, listas que crecen y listas reemplazadas', () => {
+test('diff: leaves, growing lists and replaced lists', () => {
   const base = configDoc()
   const mod = clone(base)
-  mod.variables[1].value[0].value[3].value[1].value = 5 // armadura Ranger
-  mod.variables[1].value[0].value[2].value.push(i(2)) // lista que crece al final
-  mod.variables[1].value[1].value[2].value = [i(9)] // lista reemplazada
+  mod.variables[1].value[0].value[3].value[1].value = 5 // Ranger armor
+  mod.variables[1].value[0].value[2].value.push(i(2)) // list that grows at the end
+  mod.variables[1].value[1].value[2].value = [i(9)] // replaced list
   const { ops, warnings } = diff(base, mod)
   assert.deepEqual(warnings, [])
   assert.deepEqual(ops, [
@@ -27,7 +27,7 @@ test('diff: hojas, listas que crecen y listas reemplazadas', () => {
   assert.deepEqual(rebuilt, mod)
 })
 
-test('diff: variable nueva no se puede expresar', () => {
+test('diff: a new variable cannot be expressed', () => {
   const base = configDoc()
   const mod = clone(base)
   mod.variables.push({ name: 'Extra', ...s('x') })
@@ -36,11 +36,11 @@ test('diff: variable nueva no se puede expresar', () => {
 
 const ev = (mod, path, kind, value) => ({ mod, file: 'A.SGO', path, kind, value })
 
-test('conflictos: mul de dos mods no choca', () => {
+test('conflicts: mul from two mods does not clash', () => {
   assert.deepEqual(analyze([ev('a', 'X/1', 'scale'), ev('b', 'X/1', 'scale')]), [])
 })
 
-test('conflictos: set distinto, set sobre escalado, set de ancestro', () => {
+test('conflicts: different set, set over scaling, set on an ancestor', () => {
   const c = analyze([
     ev('a', 'X/1', 'set', 1),
     ev('b', 'X/1', 'set', 2),
@@ -50,28 +50,28 @@ test('conflictos: set distinto, set sobre escalado, set de ancestro', () => {
     ev('f', 'Z/0', 'set', [f(1)]),
   ])
   assert.equal(c.length, 3)
-  assert.match(c[0].message, /valores distintos/)
-  assert.match(c[1].message, /escalado/)
-  assert.match(c[2].message, /entero/)
+  assert.match(c[0].message, /different values/)
+  assert.match(c[1].message, /scaling/)
+  assert.match(c[2].message, /replaces all of/)
 })
 
-test('conflictos: mismo valor o mismo mod no es conflicto', () => {
+test('conflicts: same value or same mod is not a conflict', () => {
   assert.deepEqual(analyze([ev('a', 'X/1', 'set', 1), ev('b', 'X/1', 'set', 1)]), [])
   assert.deepEqual(analyze([ev('a', 'X/1', 'set', 1), ev('a', 'X/1', 'set', 7)]), [])
 })
 
-test('conflictos: insert/remove contra índices de otro mod', () => {
+test('conflicts: insert/remove against another mod\'s indexes', () => {
   const c = analyze([ev('a', 'L/3', 'set', 1), ev('b', 'L', 'reshape')])
   assert.equal(c.length, 1)
-  assert.match(c[0].message, /corridos/)
+  assert.match(c[0].message, /shifted/)
 })
 
-test('conflictos: reemplazos de archivo completo', () => {
+test('conflicts: whole-file replacements', () => {
   const c = analyze([
     ev('a', 'X/1', 'set', 1),
     { mod: 'b', file: 'A.SGO', path: null, kind: 'override' },
     { mod: 'c', file: 'A.SGO', path: null, kind: 'override' },
   ])
-  assert.ok(c.some(x => /Varios mods/.test(x.message)))
-  assert.ok(c.some(x => /descarta los cambios de "a"/.test(x.message)))
+  assert.ok(c.some(x => /Several mods/.test(x.message)))
+  assert.ok(c.some(x => /discards the changes from "a"/.test(x.message)))
 })

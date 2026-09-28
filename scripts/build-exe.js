@@ -1,10 +1,10 @@
-// Arma dist/EDF6-ModKit.exe: un solo archivo que no necesita Node instalado.
+// Builds dist/EDF6-ModKit.exe: a single file that doesn't need Node installed.
 //
-//   1. esbuild junta bin/edfmk.js, src/ y lo que usa de sgott en dist/edfmk.bundle.js
-//   2. Node SEA convierte ese JS (y ui/index.html como asset) en un blob
-//   3. postject inyecta el blob en una copia de node.exe
+//   1. esbuild bundles bin/edfmk.js, src/ and the parts of sgott it uses into dist/edfmk.bundle.js
+//   2. Node SEA turns that JS (and ui/index.html as an asset) into a blob
+//   3. postject injects the blob into a copy of node.exe
 //
-// Uso: npm run build:exe
+// Usage: npm run build:exe
 
 const fs = require('fs')
 const path = require('path')
@@ -55,7 +55,7 @@ async function main() {
   ], { stdio: 'inherit' })
 
   const mb = (fs.statSync(EXE).size / 1024 / 1024).toFixed(1)
-  console.log(`\nListo: ${EXE} (${mb} MB)`)
+  console.log(`\nDone: ${EXE} (${mb} MB)`)
 }
 
 main().catch(e => {

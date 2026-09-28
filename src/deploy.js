@@ -1,12 +1,12 @@
-// Escribe el resultado del build en la carpeta Mods del juego sin romper lo que ya había.
+// Writes the build result into the game's Mods folder without breaking what was already there.
 //
-// En <outDir>/.modkit/ se guarda:
-//   manifest.json   qué archivos escribió el modkit y con qué hash
-//   backup/...      los archivos que había antes (puestos a mano) y que el modkit tuvo que pisar
+// <outDir>/.modkit/ holds:
+//   manifest.json   which files the ModKit wrote and their hashes
+//   backup/...      files that were there before (placed by hand) and had to be overwritten
 //
-// Al volver a hacer build o clean, los archivos que ya no produce ningún mod se borran y, si
-// había un respaldo, se restaura. Si alguien editó a mano un archivo del modkit, se respalda
-// antes de pisarlo.
+// On the next build or clean, files no mod produces anymore are deleted and, if there was a
+// backup, it is restored. If someone edited a ModKit file by hand, it is backed up before
+// being overwritten.
 
 const fs = require('fs')
 const path = require('path')
@@ -45,24 +45,24 @@ function backupFile(outDir, rel, log, suffix = '') {
   if (fs.existsSync(dst)) return
   fs.mkdirSync(path.dirname(dst), { recursive: true })
   fs.copyFileSync(src, dst)
-  log.push(`respaldado ${rel}${suffix ? ` (${suffix.slice(1)})` : ''}`)
+  log.push(`backed up ${rel}${suffix ? ` (${suffix.slice(1)})` : ''}`)
 }
 
 function restoreOrDelete(outDir, rel, entry, log) {
   const target = path.join(outDir, rel)
   const current = hashOf(target)
   if (current && current !== entry.sha1) {
-    log.push(`no se toca ${rel}: fue editado a mano después del último build`)
+    log.push(`left ${rel} alone: it was edited by hand after the last build`)
     return
   }
   const backup = path.join(statePaths(outDir).backup, rel)
   if (fs.existsSync(backup)) {
     fs.mkdirSync(path.dirname(target), { recursive: true })
     fs.renameSync(backup, target)
-    log.push(`restaurado ${rel}`)
+    log.push(`restored ${rel}`)
   } else if (current) {
     fs.unlinkSync(target)
-    log.push(`borrado ${rel}`)
+    log.push(`deleted ${rel}`)
   }
 }
 
@@ -74,7 +74,7 @@ function deploy(outDir, outputs, { dryRun = false } = {}) {
 
   for (const [key, entry] of Object.entries(old.files)) {
     if (!outputs.has(key)) {
-      if (dryRun) log.push(`se quitaría ${entry.rel}`)
+      if (dryRun) log.push(`would remove ${entry.rel}`)
       else restoreOrDelete(outDir, entry.rel, entry, log)
     }
   }
@@ -86,14 +86,14 @@ function deploy(outDir, outputs, { dryRun = false } = {}) {
     const prev = old.files[key]
 
     if (dryRun) {
-      if (current !== hash) log.push(`${current ? 'se reemplazaría' : 'se escribiría'} ${out.rel} (${out.mods.join(', ')})`)
+      if (current !== hash) log.push(`${current ? 'would replace' : 'would write'} ${out.rel} (${out.mods.join(', ')})`)
       continue
     }
-    // Un archivo que el modkit no escribió se respalda aunque sea idéntico: un clean posterior
-    // lo tiene que poder devolver.
+    // A file the ModKit didn't write is backed up even if identical: a later clean has to be
+    // able to bring it back.
     if (current && !prev) backupFile(outDir, out.rel, log)
     else if (current && current !== hash && current !== prev.sha1) {
-      backupFile(outDir, out.rel, log, `.editado-${Date.now()}`)
+      backupFile(outDir, out.rel, log, `.edited-${Date.now()}`)
     }
     if (current === hash) {
       next.files[key] = { rel: out.rel, sha1: hash, mods: out.mods }
@@ -102,14 +102,14 @@ function deploy(outDir, outputs, { dryRun = false } = {}) {
     fs.mkdirSync(path.dirname(target), { recursive: true })
     fs.writeFileSync(target, out.buffer)
     next.files[key] = { rel: out.rel, sha1: hash, mods: out.mods }
-    log.push(`escrito ${out.rel} (${out.mods.join(', ')})`)
+    log.push(`wrote ${out.rel} (${out.mods.join(', ')})`)
   }
 
   if (!dryRun) writeManifest(outDir, next)
   return log
 }
 
-// Cuántos archivos cambiarían si se hiciera deploy ahora (0 = Mods/ ya está al día).
+// How many files would change if deploy ran now (0 = Mods/ is up to date).
 function pendingChanges(outDir, outputs) {
   const old = readManifest(outDir)
   let count = 0

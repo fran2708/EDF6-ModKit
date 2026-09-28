@@ -1,102 +1,102 @@
 # EDF6 ModKit
 
-Framework de mods para Earth Defense Force 6 donde los mods son **parches** sobre los archivos del
-juego en vez de archivos completos, así varios mods que tocan el mismo archivo se combinan en lugar
-de pisarse.
+A mod framework for Earth Defense Force 6 where mods are **patches** on the game's files instead
+of whole files, so several mods that touch the same file combine instead of overwriting each
+other.
 
-## Para jugadores
+## For players
 
-1. Bajá `EDF6-ModKit.exe` de [Releases](https://github.com/fran2708/EDF6-ModKit/releases).
-2. Ponelo en la carpeta del juego, al lado de `EDF6.exe`.
-3. Abrilo con doble clic. La primera vez crea la carpeta `ModKit\` con todo lo necesario, y se abre
-   el ModKit en el navegador.
-4. Soltá el `.zip` de un mod en la página (sirven los mods de Nexus que reemplazan archivos; si el
-   zip trae varias versiones, te pregunta cuál). Tildá los mods que querés, ordenalos y apretá
-   **Aplicar**. Para volver al juego sin mods: **Restaurar original**.
+1. Download `EDF6-ModKit.exe` from [Releases](https://github.com/fran2708/EDF6-ModKit/releases).
+2. Put it in the game folder, next to `EDF6.exe`.
+3. Double-click it. The first time it creates a `ModKit\` folder with everything it needs, and the
+   ModKit opens in your browser.
+4. Drop a mod's `.zip` on the page (Nexus mods that replace files work too; if the zip comes in
+   several versions, it asks which one you want). Tick the mods you want, put them in order and
+   press **Apply**. To go back to the unmodded game: **Restore original**.
 
-La ventana negra que queda abierta es el ModKit funcionando; cerrala cuando termines.
+The black window that stays open is the ModKit running; close it when you're done.
 
-Los archivos originales del juego se sacan solos de `Root.cpk` cuando hacen falta; no hay que
-extraer nada a mano. Tu carpeta `Mods\` actual se respeta: lo que el ModKit pise queda respaldado y
-se puede restaurar.
+The game's original files are pulled from `Root.cpk` automatically when needed; there's nothing to
+extract by hand. Your current `Mods\` folder is respected: anything the ModKit overwrites is backed
+up and can be restored.
 
-Windows puede mostrar "Windows protegió su PC" la primera vez, porque el exe no está firmado:
-"Más información" → "Ejecutar de todas formas".
+Windows may show "Windows protected your PC" the first time, because the exe isn't signed:
+"More info" → "Run anyway".
 
-## El problema
+## The problem
 
-EDFModLoader redirige las lecturas de `Root.cpk` a la carpeta `Mods\`, así que un mod es "poner un
-archivo ahí". Si dos mods traen `DEFAULTPACKAGE/CONFIG.SGO`, gana uno y el otro desaparece. Por eso
-existen paquetes como "More slots + Armor x10", "More slots + Armor x5", etc.: una combinación
-armada a mano por cada par de mods.
+EDFModLoader redirects reads from `Root.cpk` to the `Mods\` folder, so a mod is "put a file there".
+If two mods ship `DEFAULTPACKAGE/CONFIG.SGO`, one wins and the other disappears. That's why packs
+like "More slots + Armor x10", "More slots + Armor x5", etc. exist: one hand-made combination for
+every pair of mods.
 
-El multiplicador de armadura x10, por ejemplo, cambia 4 valores de un archivo de 6000 líneas.
-Como parche es esto:
+The x10 armor multiplier, for example, changes 4 values in a 6,000-line file. As a patch it is:
 
 ```json
 { "op": "mul", "path": "SoldierInit/*/3/1", "value": 10 }
 ```
 
-## Cómo funciona
+## How it works
 
 ```
-vanilla/ (originales de Root.cpk)          mods/<id>/mod.json + files/
+vanilla/ (originals from Root.cpk)         mods/<id>/mod.json + files/
               \                                   /
-               +--- edfmk build: aplica en orden de carga, detecta conflictos
+               +--- edfmk build: applies in load order, detects conflicts
                                   |
-                   <juego>/Mods/  (lo que carga EDFModLoader)
+                    <game>/Mods/  (what EDFModLoader loads)
 ```
 
-1. Se parte de los archivos originales del juego: los que falten en `vanilla/` se extraen solos de
-   `Root.cpk` (y de los demás CPK) la primera vez que un mod los necesita.
-2. Cada mod activo aplica sus operaciones, en el orden de `load`.
-3. Los archivos SGO/DSGO completos que traiga un mod (mods de antes) se comparan contra el original
-   y se convierten solos en parches, así también se combinan.
-4. El resultado se escribe en `Mods/` del juego. Lo que ya hubiera ahí se respalda en
-   `Mods/.modkit/backup/` y `edfmk clean` lo restaura.
+1. It starts from the game's original files: whatever is missing from `vanilla/` is extracted
+   automatically from `Root.cpk` (and the other CPKs) the first time a mod needs it.
+2. Every active mod applies its operations, in `load` order.
+3. Whole SGO/DSGO files shipped by a mod (old-style mods) are compared against the original and
+   turned into patches automatically, so they combine too.
+4. The result is written to the game's `Mods/`. Anything already there is backed up to
+   `Mods/.modkit/backup/` and `edfmk clean` restores it.
 
-La lectura y escritura de SGO/DSGO la hace [sgott](https://github.com/zeddidragon/sgott); el modkit
-trabaja sobre su JSON.
+Reading and writing SGO/DSGO is done by [sgott](https://github.com/zeddidragon/sgott); the ModKit
+works on its JSON.
 
-## Instalar desde el código
+## Installing from source
 
-Para desarrollar o usarlo sin el exe. Necesita Node 20 o superior.
+For development or to use it without the exe. Requires Node 20 or newer.
 
 ```bash
 npm install
-npm link        # opcional: deja el comando edfmk disponible en cualquier carpeta
+npm link        # optional: makes the edfmk command available in any folder
 ```
 
-## Dónde instalarlo
+## Where it lives
 
-El workspace del modkit (tus mods y los originales) va **separado** de la carpeta `Mods\` del
-juego, que es solo la salida del build. Lo más cómodo es una subcarpeta `ModKit\` junto al juego:
+The ModKit workspace (your mods and the originals) is kept **separate** from the game's `Mods\`
+folder, which is only the build output. The simplest setup is a `ModKit\` subfolder next to the
+game:
 
 ```
 EARTH DEFENSE FORCE 6\
-  Mods\          <- lo que genera edfmk build y carga EDFModLoader; no editar a mano
+  Mods\          <- generated by edfmk build and loaded by EDFModLoader; don't edit by hand
   ModKit\        <- workspace
     modkit.json     ("gameDir": "..")
-    mods\           tus mods (fuente)
-    vanilla\        originales extraídos de Root.cpk
+    mods\           your mods (source)
+    vanilla\        originals extracted from Root.cpk
 ```
 
-El exe, abierto desde la carpeta del juego, arma esto solo. Desde el código, `edfmk` sin
-argumentos hace lo mismo si se corre en la carpeta del juego o en `ModKit\`. Ojo: en Windows `mods` y `Mods`
-son la misma carpeta, así que el workspace nunca puede estar en la carpeta del juego directamente.
-El modkit se niega a correr si `modsDir` o `vanillaDir` se superponen con `Mods\`. `vanilla\`
-tampoco puede estar adentro de `Mods\`: EDFModLoader la cargaría como un mod.
+The exe, opened from the game folder, sets this up by itself. From source, running `edfmk` with no
+arguments in the game folder or in `ModKit\` does the same. Note: on Windows `mods` and `Mods` are
+the same folder, so the workspace can never sit directly in the game folder. The ModKit refuses to
+run if `modsDir` or `vanillaDir` overlap with `Mods\`. `vanilla\` can't be inside `Mods\` either:
+EDFModLoader would load it as a mod.
 
-## Uso
+## Usage
 
 ```bash
-cd "D:/Juegos/EARTH DEFENSE FORCE 6/ModKit"     # se crea solo con el exe o con "edfmk"
-edfmk ui                                         # la misma interfaz que abre el exe
-edfmk import "ruta/a/un/mod/viejo" more-slots   # convierte un mod de archivos completos
+cd "D:/Games/EARTH DEFENSE FORCE 6/ModKit"      # created by the exe or by "edfmk"
+edfmk ui                                         # the same UI the exe opens
+edfmk import "path/to/an/old/mod" more-slots    # turns a whole-file mod into a patch mod
 edfmk list
-edfmk build --dry-run                            # muestra qué haría y los conflictos
+edfmk build --dry-run                            # shows what it would do and the conflicts
 edfmk build
-edfmk clean                                      # deja Mods/ como estaba
+edfmk clean                                      # puts Mods/ back the way it was
 ```
 
 `modkit.json`:
@@ -110,22 +110,22 @@ edfmk clean                                      # deja Mods/ como estaba
 }
 ```
 
-`load` son los mods activos en orden de carga: si dos chocan, gana el de más abajo.
+`load` is the list of active mods in load order: if two clash, the one further down wins.
 
-### Encontrar qué tocar
+### Finding what to change
 
 ```bash
-edfmk extract WEAPON/AWEAPON004.SGO             # saca el original de Root.cpk a vanilla/
+edfmk extract WEAPON/AWEAPON004.SGO             # extracts the original from Root.cpk to vanilla/
 edfmk paths vanilla/WEAPON/AWEAPON004.SGO name.en
-edfmk diff original.sgo modificado.sgo
+edfmk diff original.sgo modified.sgo
 ```
 
-## Formato de un mod
+## Mod format
 
 ```
 mods/armor-x10/
   mod.json
-  files/            opcional: archivos completos, con la estructura de Mods/
+  files/            optional: whole files, with the Mods/ folder structure
 ```
 
 ```json
@@ -142,63 +142,64 @@ mods/armor-x10/
 }
 ```
 
-### Rutas
+### Paths
 
-`Variable/índice/índice...`. El primer segmento es el nombre de la variable (`SoldierInit`,
-`name.en`, `custom_parameter`), los siguientes son índices dentro de listas. `*` es comodín y los
-índices negativos cuentan desde el final (`-1` es el último).
+`Variable/index/index...`. The first segment is the variable name (`SoldierInit`, `name.en`,
+`custom_parameter`), the following ones are indexes into lists. `*` is a wildcard and negative
+indexes count from the end (`-1` is the last one).
 
-### Operaciones
+### Operations
 
-| op       | campos                     | efecto                                                     |
+| op       | fields                     | effect                                                     |
 |----------|----------------------------|------------------------------------------------------------|
-| `set`    | `value`                    | reemplaza un valor manteniendo su tipo                     |
-| `set`    | `node`                     | reemplaza el nodo entero (`{ "type", "value" }`)           |
-| `mul`    | `value`                    | multiplica un número                                       |
-| `add`    | `value`                    | suma a un número                                           |
-| `append` | `node` o `nodes`           | agrega al final de una lista                               |
-| `insert` | `index`, `node` o `nodes`  | inserta en una lista                                       |
-| `remove` |                            | elimina el elemento                                        |
+| `set`    | `value`                    | replaces a value, keeping its type                         |
+| `set`    | `node`                     | replaces the whole node (`{ "type", "value" }`)            |
+| `mul`    | `value`                    | multiplies a number                                        |
+| `add`    | `value`                    | adds to a number                                           |
+| `append` | `node` or `nodes`          | appends to the end of a list                               |
+| `insert` | `index`, `node` or `nodes` | inserts into a list                                        |
+| `remove` |                            | removes the element                                        |
 
-Para balance conviene `mul`/`add`: se componen entre mods (x10 de uno y x1.2 de otro dan x12). Con
-`set` gana el último. `append` también se combina bien: dos mods que agregan elementos a la misma
-lista suman los dos.
+For balance changes prefer `mul`/`add`: they compose across mods (x10 from one and x1.2 from
+another give x12). With `set` the last one wins. `append` combines well too: two mods that add
+elements to the same list both get their additions.
 
-### Conflictos
+### Conflicts
 
-El build avisa (y sigue, ganando el último) cuando:
+The build warns (and carries on, with the last mod winning) when:
 
-- dos mods ponen con `set` valores distintos en la misma ruta
-- un `set` pisa el `mul`/`add` de otro mod
-- un mod reemplaza un nodo o lista entera donde otro había hecho cambios
-- un mod inserta/elimina en una lista y otro apunta a sus elementos por índice
-- dos mods reemplazan el mismo archivo no parcheable (texturas, modelos, etc.)
+- two mods `set` different values on the same path
+- a `set` overrides another mod's `mul`/`add`
+- a mod replaces a whole node or list where another mod made changes
+- a mod inserts/removes in a list and another mod points at its elements by index
+- two mods replace the same non-patchable file (textures, models, etc.)
 
-Si una operación falla (ruta inexistente, tipo equivocado, falta el original) no se escribe nada.
+If an operation fails (missing path, wrong type, missing original) nothing is written.
 
-## Estado
+## Status
 
-Prototipo. Probado con los 320 SGO/DSGO de una carpeta Mods real (`node tools/roundtrip.js <carpeta>`
-confirma que sobreviven la ida y vuelta) y reproduciendo el "More slots + Armor x10" combinando
-dos mods por separado.
+Prototype. Tested with the 320 SGO/DSGO files of a real Mods folder (`node tools/roundtrip.js
+<folder>` confirms they survive the round trip), extracting originals from the real `Root.cpk`,
+and by reproducing "More slots + Armor x10" from two separate mods.
 
-Pendiente:
+To do:
 
-- Parchear los `.txt` de Patcher.dll y los scripts `.AS`.
-- Selectores por contenido en las rutas (p. ej. "el arma cuyo id es X") para no depender de índices.
-- Importar mods en `.7z` y `.rar` (hoy solo `.zip`).
-- Firmar el exe para que Windows no lo marque como desconocido.
+- Patch Patcher.dll `.txt` files and `.AS` scripts.
+- Content-based selectors in paths (e.g. "the weapon whose id is X") so patches don't depend on
+  indexes.
+- Import mods packed as `.7z` and `.rar` (only `.zip` for now).
+- Sign the exe so Windows doesn't flag it as unknown.
 
-## Desarrollo
+## Development
 
 ```bash
 npm test
-node tools/roundtrip.js "D:/Juegos/EARTH DEFENSE FORCE 6/Mods"
-EDF6_GAME_DIR="D:/Juegos/EARTH DEFENSE FORCE 6" npm test   # suma la prueba contra el Root.cpk real
-npm run build:exe                                          # arma dist/EDF6-ModKit.exe
+node tools/roundtrip.js "D:/Games/EARTH DEFENSE FORCE 6/Mods"
+EDF6_GAME_DIR="D:/Games/EARTH DEFENSE FORCE 6" npm test   # adds the test against the real Root.cpk
+npm run build:exe                                         # builds dist/EDF6-ModKit.exe
 ```
 
-Para publicar una versión: `git tag v0.2.0 && git push origin v0.2.0`. GitHub Actions corre los
-tests, arma el exe y lo sube a Releases.
+To publish a version: `git tag v0.3.0 && git push origin v0.3.0`. GitHub Actions runs the tests,
+builds the exe and uploads it to Releases.
 
-Hay un mod de ejemplo en `examples/mods/armor-x10`.
+There's an example mod in `examples/mods/armor-x10`.

@@ -11,7 +11,7 @@ const { configDoc, tmpdir, write } = require('./helpers')
 
 const CONFIG = 'DEFAULTPACKAGE/CONFIG.SGO'
 
-// Juego falso: los originales van directo en ModKit/vanilla (sin CPK).
+// Fake game: the originals go straight into ModKit/vanilla (no CPK).
 function setup() {
   const game = tmpdir()
   write(path.join(game, 'EDF6.exe'), '')
@@ -38,31 +38,31 @@ function zip(files) {
   return Buffer.from(zipSync(entries))
 }
 
-test('locate: envoltorios, carpeta de variante y archivos nuevos', () => {
+test('locate: wrappers, variant folders and new files', () => {
   const { vanilla } = setup()
   const top = vanilla.topDirs()
-  assert.deepEqual(locate(['MiMod', 'Mods', 'DEFAULTPACKAGE', 'CONFIG.SGO'], vanilla, top),
-    { gameRel: CONFIG, label: 'MiMod/Mods' })
+  assert.deepEqual(locate(['MyMod', 'Mods', 'DEFAULTPACKAGE', 'CONFIG.SGO'], vanilla, top),
+    { gameRel: CONFIG, label: 'MyMod/Mods' })
   assert.deepEqual(locate(['DEFAULTPACKAGE', 'Armor x10', 'config.sgo'], vanilla, top),
     { gameRel: CONFIG, label: 'Armor x10' })
-  assert.deepEqual(locate(['MiMod', 'WEAPON', 'nuevo.sgo'], vanilla, top),
-    { gameRel: 'WEAPON/nuevo.sgo', label: 'MiMod' })
-  assert.equal(locate(['LEEME.txt'], vanilla, top), null)
+  assert.deepEqual(locate(['MyMod', 'WEAPON', 'new.sgo'], vanilla, top),
+    { gameRel: 'WEAPON/new.sgo', label: 'MyMod' })
+  assert.equal(locate(['README.txt'], vanilla, top), null)
   assert.equal(locate(['DEFAULTPACKAGE', 'CONFIG.json'], vanilla, top), null)
 })
 
-test('installZip: mod viejo simple con envoltorio', () => {
+test('installZip: simple old-style mod with a wrapper folder', () => {
   const { vanilla, modsDir } = setup()
-  const buf = zip({ 'Mi Mod/DEFAULTPACKAGE/CONFIG.SGO': variantDoc('Cambiado'), 'Mi Mod/leeme.txt': 'hola' })
-  const r = installZip(buf, { zipName: 'Mi Mod v2.zip', modsDir, vanilla })
-  assert.deepEqual(r.installed, ['mi-mod-v2'])
-  assert.match(r.notes.join(), /ignoraron 1/)
-  const manifest = JSON.parse(fs.readFileSync(path.join(modsDir, 'mi-mod-v2', 'mod.json'), 'utf8'))
-  assert.deepEqual(manifest.patches[CONFIG], [{ op: 'set', path: 'name.en', value: 'Cambiado' }])
-  assert.equal(manifest.description, 'Importado de Mi Mod v2.zip')
+  const buf = zip({ 'My Mod/DEFAULTPACKAGE/CONFIG.SGO': variantDoc('Changed'), 'My Mod/readme.txt': 'hello' })
+  const r = installZip(buf, { zipName: 'My Mod v2.zip', modsDir, vanilla })
+  assert.deepEqual(r.installed, ['my-mod-v2'])
+  assert.match(r.notes.join(), /Ignored 1/)
+  const manifest = JSON.parse(fs.readFileSync(path.join(modsDir, 'my-mod-v2', 'mod.json'), 'utf8'))
+  assert.deepEqual(manifest.patches[CONFIG], [{ op: 'set', path: 'name.en', value: 'Changed' }])
+  assert.equal(manifest.description, 'Imported from My Mod v2.zip')
 })
 
-test('installZip: variantes se ofrecen y se instala la elegida', () => {
+test('installZip: variants are offered and the chosen one is installed', () => {
   const { vanilla, modsDir } = setup()
   const buf = zip({
     'DEFAULTPACKAGE/Armor x2/CONFIG.SGO': variantDoc('x2'),
@@ -77,7 +77,7 @@ test('installZip: variantes se ofrecen y se instala la elegida', () => {
   assert.equal(manifest.patches[CONFIG][0].value, 'x10')
 })
 
-test('installZip: zip con mod.json se copia tal cual', () => {
+test('installZip: a zip with mod.json is copied as is', () => {
   const { vanilla, modsDir } = setup()
   const buf = zip({ 'armor-x10/mod.json': JSON.stringify({ name: 'Armor', patches: {} }) })
   const r = installZip(buf, { zipName: 'x.zip', modsDir, vanilla })
@@ -85,19 +85,19 @@ test('installZip: zip con mod.json se copia tal cual', () => {
   assert.ok(fs.existsSync(path.join(modsDir, 'armor-x10', 'mod.json')))
 })
 
-test('installZip: rechaza rutas que salen de la carpeta', () => {
+test('installZip: rejects paths that escape the folder', () => {
   const { vanilla, modsDir } = setup()
   const buf = zip({ '../../evil.SGO': 'x' })
-  assert.throws(() => installZip(buf, { modsDir, vanilla }), /insegura/)
+  assert.throws(() => installZip(buf, { modsDir, vanilla }), /unsafe/)
 })
 
-test('API: token, estado, orden, aplicar y restaurar', async () => {
+test('API: token, state, order, apply and restore', async () => {
   const { game, configFile, modsDir } = setup()
   write(path.join(modsDir, 'armor', 'mod.json'), JSON.stringify({
     name: 'Armor', patches: { [CONFIG]: [{ op: 'mul', path: 'SoldierInit/*/3/1', value: 10 }] },
   }))
-  write(path.join(modsDir, 'fija', 'mod.json'), JSON.stringify({
-    name: 'Fija', patches: { [CONFIG]: [{ op: 'set', path: 'SoldierInit/0/3/1', value: 1 }] },
+  write(path.join(modsDir, 'fixed', 'mod.json'), JSON.stringify({
+    name: 'Fixed', patches: { [CONFIG]: [{ op: 'set', path: 'SoldierInit/0/3/1', value: 1 }] },
   }))
   const srv = await startServer({ configFile })
   const base = srv.url.split('?')[0]
@@ -110,17 +110,17 @@ test('API: token, estado, orden, aplicar y restaurar', async () => {
   try {
     assert.equal((await fetch(base)).status, 403)
     assert.equal((await fetch(srv.url)).status, 200)
-    assert.equal((await call('GET', '/api/state', null, 'malo')).status, 403)
+    assert.equal((await call('GET', '/api/state', null, 'wrong')).status, 403)
 
     let { data } = await call('GET', '/api/state')
-    assert.deepEqual(data.mods.map(m => m.id), ['armor', 'fija'])
+    assert.deepEqual(data.mods.map(m => m.id), ['armor', 'fixed'])
     assert.equal(data.preview.pending, 0)
 
-    ;({ data } = await call('POST', '/api/load', { load: ['armor', 'fija'] }))
-    assert.deepEqual(data.load, ['armor', 'fija'])
+    ;({ data } = await call('POST', '/api/load', { load: ['armor', 'fixed'] }))
+    assert.deepEqual(data.load, ['armor', 'fixed'])
     assert.equal(data.preview.conflicts.length, 1)
     assert.equal(data.preview.pending, 1)
-    assert.equal((await call('POST', '/api/load', { load: ['no-existe'] })).status, 400)
+    assert.equal((await call('POST', '/api/load', { load: ['no-such-mod'] })).status, 400)
 
     ;({ data } = await call('POST', '/api/apply'))
     assert.ok(data.ok)
@@ -130,15 +130,15 @@ test('API: token, estado, orden, aplicar y restaurar', async () => {
     ;({ data } = await call('POST', '/api/restore'))
     assert.ok(!fs.existsSync(path.join(game, 'Mods', CONFIG)))
 
-    ;({ data } = await call('POST', '/api/remove', { id: 'fija' }))
+    ;({ data } = await call('POST', '/api/remove', { id: 'fixed' }))
     assert.deepEqual(data.load, ['armor'])
-    assert.ok(!fs.existsSync(path.join(modsDir, 'fija')))
+    assert.ok(!fs.existsSync(path.join(modsDir, 'fixed')))
   } finally {
     await srv.close()
   }
 })
 
-test('API: importar zip con variantes', async () => {
+test('API: importing a zip with variants', async () => {
   const { configFile } = setup()
   const srv = await startServer({ configFile })
   const base = srv.url.split('?')[0]

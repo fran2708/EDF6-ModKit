@@ -1,16 +1,16 @@
-// Rutas dentro de un documento SGO/DSGO.
+// Paths inside an SGO/DSGO document.
 //
-//   "SoldierInit/3/2"  -> variable SoldierInit, elemento 3, elemento 2
-//   "name.en"          -> variable name.en (los nombres pueden tener puntos, por eso el separador es /)
-//   "WeaponTable/*/2"  -> el elemento 2 de todos los elementos de WeaponTable
-//   "ModeList/-1"      -> último elemento
+//   "SoldierInit/3/2"  -> variable SoldierInit, element 3, element 2
+//   "name.en"          -> variable name.en (names can contain dots, hence the / separator)
+//   "WeaponTable/*/2"  -> element 2 of every element of WeaponTable
+//   "ModeList/-1"      -> last element
 //
-// El primer segmento es el nombre de una variable (o su índice si es numérico y no hay una
-// variable con ese nombre). Los siguientes son índices dentro de listas `ptr`.
+// The first segment is a variable name (or its index if it's numeric and no variable has that
+// name). The following ones are indexes into `ptr` lists.
 
 function split(path) {
   if (Array.isArray(path)) return path.map(String)
-  if (typeof path !== 'string' || path === '') throw new Error('Ruta vacía')
+  if (typeof path !== 'string' || path === '') throw new Error('Empty path')
   return path.split('/')
 }
 
@@ -31,8 +31,8 @@ function listIndex(list, seg) {
   return i >= 0 && i < list.length ? i : -1
 }
 
-// Devuelve todas las ubicaciones que matchean la ruta:
-// [{ node, list, index, path }] donde list[index] === node y path es la ruta concreta.
+// Returns every location matching the path:
+// [{ node, list, index, path }] where list[index] === node and path is the concrete path.
 function resolve(doc, path) {
   const segs = split(path)
   const [head, ...rest] = segs
@@ -41,7 +41,7 @@ function resolve(doc, path) {
     found = doc.variables.map((node, index) => ({ node, list: doc.variables, index, path: [node.name] }))
   } else {
     const index = variableIndex(doc, head)
-    if (index === -1) throw new PathError(`No existe la variable "${head}"`, segs, 0)
+    if (index === -1) throw new PathError(`Variable "${head}" does not exist`, segs, 0)
     const node = doc.variables[index]
     found = [{ node, list: doc.variables, index, path: [node.name] }]
   }
@@ -50,7 +50,7 @@ function resolve(doc, path) {
     const next = []
     for (const at of found) {
       if (at.node.type !== 'ptr' || !Array.isArray(at.node.value)) {
-        throw new PathError(`"${join(at.path)}" no es una lista (es ${at.node.type})`, segs, depth + 1)
+        throw new PathError(`"${join(at.path)}" is not a list (it is ${at.node.type})`, segs, depth + 1)
       }
       const list = at.node.value
       if (seg === '*') {
@@ -59,7 +59,7 @@ function resolve(doc, path) {
       }
       const index = listIndex(list, seg)
       if (index === -1) {
-        throw new PathError(`Índice ${seg} fuera de rango en "${join(at.path)}" (tiene ${list.length})`, segs, depth + 1)
+        throw new PathError(`Index ${seg} out of range in "${join(at.path)}" (it has ${list.length})`, segs, depth + 1)
       }
       next.push({ node: list[index], list, index, path: [...at.path, String(index)] })
     }
@@ -77,7 +77,7 @@ class PathError extends Error {
   }
 }
 
-// Recorre todas las hojas (valores que no son ptr) con su ruta. Útil para buscar qué tocar.
+// Walks every leaf (non-ptr value) with its path. Handy for finding what to change.
 function* leaves(doc) {
   function* walk(node, path) {
     if (node.type === 'ptr' && Array.isArray(node.value)) {
@@ -90,7 +90,7 @@ function* leaves(doc) {
   for (const v of doc.variables) yield* walk(v, [v.name])
 }
 
-// true si `a` es ancestro estricto de `b` ("X/1" es ancestro de "X/1/3").
+// true if `a` is a strict ancestor of `b` ("X/1" is an ancestor of "X/1/3").
 function isAncestor(a, b) {
   return b.startsWith(a + '/')
 }

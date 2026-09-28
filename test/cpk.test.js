@@ -7,9 +7,9 @@ const { decompress } = require('../src/crilayla')
 const { vanillaProvider } = require('../src/vanilla')
 const { tmpdir, write } = require('./helpers')
 
-// --- generadores mínimos para los tests -------------------------------------------------------
+// --- minimal generators for the tests -----------------------------------------------------
 
-// Tabla @UTF con columnas por fila de tipo u32 (0x4), u64 (0x6) o string (0xa).
+// @UTF table with per-row columns of type u32 (0x4), u64 (0x6) or string (0xa).
 function utf(name, columns, rows) {
   const strings = ['<NULL>', name, ...columns.map(c => c.name)]
   for (const row of rows) for (const c of columns) if (c.type === 0xa) strings.push(row[c.name])
@@ -64,15 +64,15 @@ function chunk(magic, table) {
   return Buffer.concat([head, table])
 }
 
-// Comprime con CRILAYLA usando solo literales, más una referencia opcional. Los bits se leen de
-// atrás para adelante y los datos se reconstruyen desde el final.
+// Compresses with CRILAYLA using only literals, plus an optional back-reference. Bits are read
+// back to front and the data is rebuilt from the end.
 function crilayla(data, backref) {
   const bits = []
   const push = (value, n) => { for (let i = n - 1; i >= 0; i--) bits.push((value >> i) & 1) }
   let i = data.length - 1
   while (i >= 0) {
     if (backref && i === backref.at) {
-      push(1, 1); push(backref.offset, 13); push(0, 2) // largo 3
+      push(1, 1); push(backref.offset, 13); push(0, 2) // length 3
       i -= 3
       continue
     }
@@ -82,7 +82,7 @@ function crilayla(data, backref) {
   while (bits.length % 8) bits.push(0)
   const bytes = []
   for (let b = 0; b < bits.length; b += 8) bytes.push(parseInt(bits.slice(b, b + 8).join(''), 2))
-  const compressed = Buffer.from(bytes.reverse()) // el primer byte leído va al final
+  const compressed = Buffer.from(bytes.reverse()) // the first byte read goes last
   const header = Buffer.alloc(16)
   header.write('CRILAYLA', 0, 'latin1')
   header.writeUInt32LE(data.length, 8)
@@ -121,57 +121,57 @@ function makeCpk(file, files) {
 
 // --- tests ------------------------------------------------------------------------------------
 
-test('@UTF: parsea tablas enmascaradas y sin enmascarar', () => {
-  const table = utf('T', [{ name: 'A', type: 0x4 }, { name: 'B', type: 0xa }], [{ A: 7, B: 'hola' }, { A: 8, B: 'chau' }])
-  const expected = { name: 'T', rows: [{ A: 7, B: 'hola' }, { A: 8, B: 'chau' }] }
+test('@UTF: parses masked and unmasked tables', () => {
+  const table = utf('T', [{ name: 'A', type: 0x4 }, { name: 'B', type: 0xa }], [{ A: 7, B: 'hello' }, { A: 8, B: 'bye' }])
+  const expected = { name: 'T', rows: [{ A: 7, B: 'hello' }, { A: 8, B: 'bye' }] }
   assert.deepEqual(parseUtf(table), expected)
   assert.deepEqual(parseUtf(unmask(table)), expected)
 })
 
-test('CRILAYLA: literales y referencias hacia atrás', () => {
+test('CRILAYLA: literals and back-references', () => {
   const data = Buffer.from('XYZXYZ')
-  // Los 3 primeros bytes (índices 0..2) repiten los 3 de más adelante: referencia con offset 0.
+  // The first 3 bytes (indexes 0..2) repeat the next 3: a back-reference with offset 0.
   const { packed, raw } = crilayla(data, { at: 2, offset: 0 })
   const out = decompress(packed)
   assert.deepEqual(out.subarray(0, 0x100), raw)
   assert.equal(out.subarray(0x100).toString(), 'XYZXYZ')
 })
 
-test('CPK: índice y extracción, con y sin compresión', () => {
+test('CPK: index and extraction, with and without compression', () => {
   const dir = tmpdir()
   const file = path.join(dir, 'Root.cpk')
-  const plain = Buffer.from('contenido plano')
-  const { packed, raw } = crilayla(Buffer.from('comprimido'))
+  const plain = Buffer.from('plain content')
+  const { packed, raw } = crilayla(Buffer.from('compressed'))
   makeCpk(file, [
     { dir: 'WEAPON', name: 'A.SGO', stored: plain, size: plain.length },
     { dir: 'DEFAULTPACKAGE', name: 'Config.sgo', stored: packed, size: 0x100 + 10 },
   ])
   const index = readIndex(file)
   assert.deepEqual([...index.keys()], ['WEAPON/A.SGO', 'DEFAULTPACKAGE/CONFIG.SGO'])
-  assert.equal(extract(file, index.get('WEAPON/A.SGO')).toString(), 'contenido plano')
+  assert.equal(extract(file, index.get('WEAPON/A.SGO')).toString(), 'plain content')
   const unpacked = extract(file, index.get('DEFAULTPACKAGE/CONFIG.SGO'))
-  assert.deepEqual(unpacked, Buffer.concat([raw, Buffer.from('comprimido')]))
+  assert.deepEqual(unpacked, Buffer.concat([raw, Buffer.from('compressed')]))
 })
 
-test('vanillaProvider: usa vanilla/ primero y si no extrae del CPK', () => {
+test('vanillaProvider: uses vanilla/ first and otherwise extracts from the CPK', () => {
   const game = tmpdir()
-  const plain = Buffer.from('del cpk')
+  const plain = Buffer.from('from the cpk')
   makeCpk(path.join(game, 'Root.cpk'), [{ dir: 'WEAPON', name: 'A.SGO', stored: plain, size: plain.length }])
   const vanillaDir = path.join(game, 'ModKit', 'vanilla')
-  write(path.join(vanillaDir, 'UI', 'B.SGO'), 'a mano')
+  write(path.join(vanillaDir, 'UI', 'B.SGO'), 'by hand')
 
   const v = vanillaProvider({ vanillaDir, gameDir: game })
-  assert.equal(fs.readFileSync(v.get('UI/B.SGO').abs, 'utf8'), 'a mano')
+  assert.equal(fs.readFileSync(v.get('UI/B.SGO').abs, 'utf8'), 'by hand')
   assert.equal(v.relOf('WEAPON/A.SGO'), 'WEAPON/A.SGO')
-  assert.ok(!fs.existsSync(path.join(vanillaDir, 'WEAPON', 'A.SGO'))) // relOf no extrae
+  assert.ok(!fs.existsSync(path.join(vanillaDir, 'WEAPON', 'A.SGO'))) // relOf doesn't extract
   const got = v.get('WEAPON/A.SGO')
-  assert.equal(fs.readFileSync(got.abs, 'utf8'), 'del cpk')
+  assert.equal(fs.readFileSync(got.abs, 'utf8'), 'from the cpk')
   assert.equal(v.get('NO/EXISTE.SGO'), undefined)
   assert.deepEqual([...v.topDirs()].sort(), ['UI', 'WEAPON'])
 })
 
 const GAME = process.env.EDF6_GAME_DIR
-test('integración: extraer CONFIG.SGO del Root.cpk real', { skip: !GAME && 'definir EDF6_GAME_DIR' }, () => {
+test('integration: extract CONFIG.SGO from the real Root.cpk', { skip: !GAME && 'set EDF6_GAME_DIR' }, () => {
   const codec = require('../src/codec')
   const file = path.join(GAME, 'Root.cpk')
   const index = readIndex(file)

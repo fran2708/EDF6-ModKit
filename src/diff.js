@@ -1,11 +1,11 @@
-// Genera operaciones de parche a partir de dos documentos: el original y uno modificado.
-// Sirve para convertir mods "de archivo completo" en parches que se pueden combinar.
+// Generates patch operations from two documents: the original and a modified one.
+// Used to turn "whole file" mods into patches that can be combined.
 //
-// Criterio:
-//   - hojas distintas                        -> set
-//   - lista que solo creció al final         -> append de lo nuevo
-//   - lista con otro largo y otro contenido  -> set del nodo entero (grueso, pero correcto)
-//   - cambio de tipo                          -> set del nodo entero
+// Rules:
+//   - different leaves                       -> set
+//   - a list that only grew at the end       -> append of the new elements
+//   - a list with other length and content   -> set of the whole node (coarse, but correct)
+//   - a type change                          -> set of the whole node
 
 const { join } = require('./path')
 
@@ -52,14 +52,14 @@ function diff(baseDoc, modDoc) {
   for (const v of modDoc.variables) {
     const b = baseByName.get(v.name)
     if (!b) {
-      warnings.push(`La variable "${v.name}" no existe en el original; no se puede expresar como parche`)
+      warnings.push(`Variable "${v.name}" does not exist in the original; it can't be expressed as a patch`)
       continue
     }
     diffNode(b, v, [v.name], ops)
   }
   const modNames = new Set(modDoc.variables.map(v => v.name))
   for (const name of baseByName.keys()) {
-    if (!modNames.has(name)) warnings.push(`El modificado no tiene la variable "${name}"; se ignora`)
+    if (!modNames.has(name)) warnings.push(`The modified file lacks variable "${name}"; ignored`)
   }
   return { ops, warnings }
 }
