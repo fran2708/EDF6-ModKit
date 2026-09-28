@@ -110,7 +110,7 @@ function parsePatch(text, name = 'patch') {
     write(hex.length / 2, lineNo)
   })
 
-  return { writes, problems }
+  return { writes, problems, labels: labels.size }
 }
 
 // sources: [{ owner, rel, text }]. Returns conflicts shaped like src/conflicts.js, one per pair of
@@ -183,4 +183,31 @@ function checkPatches(outputs, outDir) {
   return { conflicts: patchConflicts(sources), notes }
 }
 
-module.exports = { parsePatch, patchConflicts, patchSources, checkPatches }
+// true if a loose .txt (not inside a Patches folder) is a Patcher patch rather than a readme:
+// every line must read as patch syntax and it must define or write something.
+function looksLikePatch(text) {
+  const r = parsePatch(text)
+  return r.problems.length === 0 && r.writes.length + r.labels > 0
+}
+
+// Author and a one-line description from a patch's leading comments, e.g.
+//   ; Author: MoistGoat
+//   ; Removes Crosshair and Laser. Laser commented out by default
+function patchInfo(text) {
+  let author = ''
+  let description = ''
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim()
+    if (!line.startsWith(';')) {
+      if (line) break
+      continue
+    }
+    const comment = line.replace(/^;+\s*/, '')
+    const m = /^author\s*:\s*(.*)$/i.exec(comment)
+    if (m) author = author || m[1].trim()
+    else if (!description && comment && !/^(remark|added offset|for earth defense force)/i.test(comment)) description = comment
+  }
+  return { author, description }
+}
+
+module.exports = { parsePatch, patchConflicts, patchSources, checkPatches, looksLikePatch, patchInfo }

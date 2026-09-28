@@ -332,7 +332,10 @@ async function importZip(file) {
       r = await api('POST', '/api/import/choose', { importId: r.importId, variant })
     }
     state = r.state
-    showLog(`Installed: ${r.installed.map(nameOf).join(', ')}. Tick it in the list to enable it.`, r.notes)
+    const title = r.installed.length === 1
+      ? `Installed “${nameOf(r.installed[0])}”. Tick it in the list to enable it.`
+      : `Installed ${r.installed.length} mods. Tick the ones you want in the list.`
+    showLog(title, [...r.notes, ...(r.installed.length > 1 ? r.installed.map(id => `  ${nameOf(id)}`) : [])])
   })
 }
 

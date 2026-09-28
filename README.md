@@ -188,6 +188,11 @@ Patcher `.txt` files go in `files/Patches/<Name>.txt` and are deployed to `Mods/
 from Nexus that contain `Mods/Patches/*.txt` are imported as such (`ExtraPatches/` holds optional
 presets and is left out, as are loader files like `winmm.dll` or `Patcher.dll`).
 
+Patch packs often ship their `.txt` files loose in the zip (for example Moist Patches). Those are
+recognized by their content, so readmes are left out, and a zip made only of patches is split into
+one mod per patch ("Moist Patches v1.2: NoCrosshair", …) with the description taken from the
+patch's comments. That way players enable only the tweaks they want.
+
 Memory patches overwrite raw game code, so they can't be merged. The ModKit reads them and warns
 when two patch files (from mods or placed in `Mods/Patches` by hand) write the same bytes: same
 hex address, or the same `aob` pattern with overlapping offsets. Patcher would apply both and

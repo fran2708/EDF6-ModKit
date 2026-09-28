@@ -14,6 +14,7 @@ const path = require('path')
 const { unzipSync } = require('fflate')
 const { fileKey } = require('./mods')
 const { importFolder } = require('./importer')
+const { looksLikePatch, patchInfo } = require('./patcher')
 
 const IGNORED = /(^|\/)(__MACOSX\/|\.DS_Store$|Thumbs\.db$)/i
 
@@ -89,7 +90,14 @@ function analyzeZip(buffer, vanilla) {
   const groups = new Map()
   const ignored = []
   for (const e of entries) {
-    const at = locate(e.segs, vanilla, topDirs, exts)
+    let at = locate(e.segs, vanilla, topDirs, exts)
+    // Patch packs often ship their Patcher .txt files loose, outside any Patches folder: they
+    // are recognized by their content (readmes don't parse as patches).
+    // ExtraPatches holds optional presets that Patcher never loads, so those stay out.
+    const inExtras = e.segs.slice(0, -1).some(s => s.toLowerCase() === 'extrapatches')
+    if (!at && !inExtras && /\.txt$/i.test(e.segs.at(-1)) && looksLikePatch(e.data.toString('utf8'))) {
+      at = { gameRel: `Patches/${e.segs.at(-1)}`, label: e.segs.slice(0, -1).join('/') }
+    }
     if (!at) {
       ignored.push(e.segs.join('/'))
       continue
@@ -120,6 +128,42 @@ function writeFiles(dir, files) {
     fs.mkdirSync(path.dirname(abs), { recursive: true })
     fs.writeFileSync(abs, f.data)
   }
+}
+
+// Readable mod name from a download: "Moist Patches v1.2-71-v1-2-1728004564.zip" (Nexus adds the
+// mod id, version and a timestamp; browsers add "(1)" to repeated downloads) -> "Moist Patches v1.2".
+function cleanZipName(zipName) {
+  return path.basename(zipName)
+    .replace(/\.zip$/i, '')
+    .replace(/\s*\(\d+\)$/, '')
+    .replace(/-\d+(?:-[a-z0-9.]+)*-\d{9,}$/i, '')
+    .trim() || 'mod'
+}
+
+const PATCH_REL = /^Patches\/[^/]+\.txt$/i
+
+// A group made only of Patcher patches is a pack of independent tweaks: each patch becomes its
+// own mod, so the player enables just the ones they want.
+function installPatchMods(files, { modsDir, packName }) {
+  const installed = []
+  for (const f of files) {
+    const patchName = path.basename(f.rel, path.extname(f.rel))
+    const name = files.length > 1 ? `${packName}: ${patchName}` : packName
+    const id = uniqueId(modsDir, slug(name))
+    const info = patchInfo(f.data.toString('utf8'))
+    const dir = path.join(modsDir, id)
+    writeFiles(path.join(dir, 'files'), [f])
+    const manifest = {
+      name,
+      version: '',
+      author: info.author,
+      description: info.description || `Memory patch from ${packName}`,
+      patches: {},
+    }
+    fs.writeFileSync(path.join(dir, 'mod.json'), JSON.stringify(manifest, null, 2) + '\n')
+    installed.push(id)
+  }
+  return installed
 }
 
 // Readable name for a variant: the last folder of its label.
@@ -160,23 +204,32 @@ function installZip(buffer, { zipName = 'mod.zip', modsDir, vanilla, variant } =
     }
   }
 
+  const files = analysis.groups.get(label)
+  const suffix = labels.length > 1 ? ` (${variantName(label)})` : ''
+  const name = cleanZipName(zipName) + suffix
+  const source = path.basename(zipName) + suffix
+  const ignoredNote = analysis.ignored.length
+    ? [`Ignored ${analysis.ignored.length} file(s) that are not game files: ${analysis.ignored.slice(0, 3).join(', ')}`]
+    : []
+
+  if (files.every(f => PATCH_REL.test(f.rel))) {
+    const installed = installPatchMods(files, { modsDir, packName: name })
+    const notes = installed.length > 1
+      ? [`Each of the ${installed.length} patches was installed as its own mod, so you can enable only the ones you want.`]
+      : []
+    return { installed, notes: [...notes, ...ignoredNote] }
+  }
+
   // Build a folder with the game's structure and import it like any old-style mod.
   const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'edfmk-zip-'))
   try {
-    writeFiles(staging, analysis.groups.get(label))
-    const suffix = labels.length > 1 ? ` (${variantName(label)})` : ''
-    const name = path.basename(zipName).replace(/\.zip$/i, '') + suffix
+    writeFiles(staging, files)
     const id = uniqueId(modsDir, slug(name))
-    const source = path.basename(zipName) + suffix
     const result = importFolder(staging, path.join(modsDir, id), { vanilla, id, name, source })
-    const notes = [...result.notes]
-    if (analysis.ignored.length) {
-      notes.push(`Ignored ${analysis.ignored.length} file(s) that are not game files: ${analysis.ignored.slice(0, 3).join(', ')}`)
-    }
-    return { installed: [id], notes }
+    return { installed: [id], notes: [...result.notes, ...ignoredNote] }
   } finally {
     fs.rmSync(staging, { recursive: true, force: true })
   }
 }
 
-module.exports = { analyzeZip, installZip, locate, slug }
+module.exports = { analyzeZip, installZip, locate, slug, cleanZipName }

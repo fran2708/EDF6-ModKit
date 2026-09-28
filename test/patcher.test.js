@@ -111,3 +111,76 @@ test('installZip: keeps Mods/Patches/*.txt and ignores ExtraPatches and loader f
   const copied = path.join(modsDir, 'splash', 'files', 'Patches', 'NoSplashScreen.txt')
   assert.equal(fs.readFileSync(copied, 'utf8'), NO_SPLASH)
 })
+
+// --- loose patches (patch packs like Moist Patches ship .txt files at the zip root) ---
+
+const { looksLikePatch, patchInfo } = require('../src/patcher')
+const { cleanZipName } = require('../src/zipimport')
+const { loadMods } = require('../src/mods')
+
+function workspace() {
+  const ws = tmpdir()
+  write(path.join(ws, 'vanilla', 'DEFAULTPACKAGE', 'CONFIG.SGO'), codec.encode(configDoc()))
+  const vanilla = vanillaProvider({ vanillaDir: path.join(ws, 'vanilla'), gameDir: null })
+  const modsDir = path.join(ws, 'mods')
+  fs.mkdirSync(modsDir)
+  return { vanilla, modsDir }
+}
+
+const zip = files => Buffer.from(zipSync(Object.fromEntries(
+  Object.entries(files).map(([k, v]) => [k, typeof v === 'string' ? strToU8(v) : new Uint8Array(v)]),
+)))
+
+test('looksLikePatch / patchInfo: patches vs readmes', () => {
+  assert.equal(looksLikePatch(NO_SPLASH), true)
+  assert.equal(looksLikePatch(FOV), true)
+  assert.equal(looksLikePatch('aob Only 1122\n'), true)
+  assert.equal(looksLikePatch('Install: copy the files into Mods\nEnjoy!\n'), false)
+  assert.equal(looksLikePatch('; just a comment\n'), false)
+  assert.deepEqual(patchInfo(NO_SPLASH), { author: 'MoistGoat', description: '' })
+  assert.deepEqual(patchInfo('; Author: redone\n; Also works on enemy grenadiers.\naob A 11\n'),
+    { author: 'redone', description: 'Also works on enemy grenadiers.' })
+})
+
+test('installZip: a pack of loose patches becomes one mod per patch; readmes are ignored', () => {
+  const { vanilla, modsDir } = workspace()
+  const buf = zip({
+    'NoSplashScreen.txt': NO_SPLASH,
+    'ChangeFOV.txt': '; Author: BlueAmulet\n; Wider view\n' + FOV,
+    'README.txt': 'How to install: copy these into Mods\Patches.\n',
+  })
+  const r = installZip(buf, { zipName: 'Moist Patches v1.2-71-v1-2-1728004564.zip', modsDir, vanilla })
+  assert.deepEqual(r.installed.sort(), ['moist-patches-v1-2-changefov', 'moist-patches-v1-2-nosplashscreen'])
+  assert.match(r.notes.join(), /installed as its own mod/)
+  assert.match(r.notes.join(), /Ignored 1 file/)
+  const mods = loadMods(modsDir)
+  const fov = mods.find(m => m.id === 'moist-patches-v1-2-changefov')
+  assert.deepEqual([fov.name, fov.author, fov.description], ['Moist Patches v1.2: ChangeFOV', 'BlueAmulet', 'Wider view'])
+  assert.deepEqual(fov.files.map(f => f.rel), ['Patches/ChangeFOV.txt'])
+  assert.equal(mods.find(m => m.id === 'moist-patches-v1-2-nosplashscreen').description, 'Memory patch from Moist Patches v1.2')
+})
+
+test('installZip: a single loose patch is one mod named after the zip', () => {
+  const { vanilla, modsDir } = workspace()
+  const r = installZip(zip({ 'NoSplashScreen.txt': NO_SPLASH }), { zipName: 'No Splash(1).zip', modsDir, vanilla })
+  assert.deepEqual(r.installed, ['no-splash'])
+  assert.equal(loadMods(modsDir)[0].name, 'No Splash')
+})
+
+test('installZip: game files plus a loose patch stay together in one mod', () => {
+  const { vanilla, modsDir } = workspace()
+  const doc = configDoc()
+  doc.variables[2].value = 'Changed'
+  const r = installZip(zip({ 'DEFAULTPACKAGE/CONFIG.SGO': codec.encode(doc), 'NoSplashScreen.txt': NO_SPLASH }),
+    { zipName: 'Combo.zip', modsDir, vanilla })
+  assert.deepEqual(r.installed, ['combo'])
+  const [m] = loadMods(modsDir)
+  assert.deepEqual(Object.keys(m.patches), ['DEFAULTPACKAGE/CONFIG.SGO'])
+  assert.deepEqual(m.files.map(f => f.rel), ['Patches/NoSplashScreen.txt'])
+})
+
+test('cleanZipName: strips Nexus suffixes and download counters', () => {
+  assert.equal(cleanZipName('More Weapon Slots 1.0.1-29-1-0-2-optional-1723089738(1).zip'), 'More Weapon Slots 1.0.1')
+  assert.equal(cleanZipName('DLC1 Enemy Increased Drops (Balanced)-82-1-1724847889.zip'), 'DLC1 Enemy Increased Drops (Balanced)')
+  assert.equal(cleanZipName('My Mod v2.zip'), 'My Mod v2')
+})
