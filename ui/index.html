@@ -18,10 +18,16 @@
     }
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 "Segoe UI", system-ui, sans-serif; }
   main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
   header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   h1 { font-size: 22px; margin: 0; }
+  h1 .version { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 4px; }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .panel-head h2 { margin: 0; }
+  .dropcover { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); pointer-events: none; }
+  .dropcover span { border: 2px dashed var(--accent); border-radius: 12px; background: var(--drop); color: var(--text); padding: 28px 40px; font-size: 18px; font-weight: 600; }
   h2 { font-size: 15px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
   .muted { color: var(--muted); font-size: 13px; }
   #game { overflow-wrap: anywhere; }
@@ -81,7 +87,7 @@
 <body>
 <main>
   <header>
-    <h1>EDF6 ModKit</h1>
+    <h1>EDF6 ModKit <span class="version" id="version"></span></h1>
     <span class="muted" id="game"></span>
   </header>
 
@@ -104,7 +110,10 @@
   </section>
 
   <section class="panel">
-    <h2>Mods</h2>
+    <div class="panel-head">
+      <h2>Mods</h2>
+      <button id="addMod">Add mod (.zip)</button>
+    </div>
     <p class="muted" style="margin:-4px 0 8px">Tick the ones you want to use. Drag them to change the order: if two mods clash, the one further down wins.</p>
     <ul class="mods" id="mods"></ul>
   </section>
@@ -137,6 +146,8 @@
     </div>
   </form>
 </dialog>
+
+<div class="dropcover" id="dropcover" hidden><span>Drop the .zip to add it</span></div>
 
 <div class="toast" id="toast"></div>
 
@@ -194,6 +205,9 @@ function render() {
   renderLoader()
   if (!state) return
   $('game').textContent = state.gameDir
+  $('version').textContent = `v${state.version}`
+  // The big drop zone is the first-run hint; with mods listed, "Add mod" and the window-wide drop do.
+  $('drop').hidden = state.mods.length > 0
   const p = state.preview
   const badge = $('badge')
   if (p.errors.length) {
@@ -381,12 +395,33 @@ function chooseVariant(variants) {
 const drop = $('drop')
 drop.ondragover = e => { e.preventDefault(); drop.classList.add('hover') }
 drop.ondragleave = () => drop.classList.remove('hover')
-drop.ondrop = e => {
+$('addMod').onclick = () => $('file').click()
+
+// A zip dropped anywhere on the window. Only file drags count: dragging a mod row reorders.
+const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files')
+let dragDepth = 0
+document.addEventListener('dragenter', e => {
+  if (!hasFiles(e)) return
+  dragDepth++
+  $('dropcover').hidden = false
+})
+document.addEventListener('dragleave', e => {
+  if (hasFiles(e) && --dragDepth <= 0) {
+    dragDepth = 0
+    $('dropcover').hidden = true
+  }
+})
+document.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault() })
+document.addEventListener('drop', e => {
+  if (!hasFiles(e)) return
   e.preventDefault()
+  dragDepth = 0
+  $('dropcover').hidden = true
   drop.classList.remove('hover')
   const file = e.dataTransfer.files[0]
   if (file) importZip(file)
-}
+})
+
 $('file').onchange = e => {
   const file = e.target.files[0]
   e.target.value = ''

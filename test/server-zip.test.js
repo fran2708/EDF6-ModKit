@@ -170,6 +170,7 @@ test('API: importing the mods installed by hand in Mods/', async () => {
   try {
     let state = await fetch(base + 'api/state', { headers: { 'x-token': srv.token } }).then(r => r.json())
     assert.deepEqual(state.unmanaged, [CONFIG])
+    assert.equal(state.version, require('../package.json').version)
     const data = await post('api/import-installed')
     assert.deepEqual(data.installed, ['previously-installed'])
     assert.deepEqual(data.state.load, ['previously-installed'])

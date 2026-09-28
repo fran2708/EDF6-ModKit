@@ -15,6 +15,7 @@ const { installZip } = require('./zipimport')
 const { checkPatches } = require('./patcher')
 const { isPackaged, vanillaFor } = require('./workspace')
 const { createLoader } = require('./loader')
+const pkg = require('../package.json')
 
 const MAX_BODY = 1024 * 1024 * 1024 // 1 GB: some texture mods are big
 
@@ -77,6 +78,7 @@ function createApp(configFile, { loader } = {}) {
     const c = cfg()
     const { all } = modsOf(c)
     return {
+      version: pkg.version,
       gameDir: c.gameDir,
       modsDir: c.modsDir,
       load: c.load.filter(id => all.some(m => m.id === id)),
