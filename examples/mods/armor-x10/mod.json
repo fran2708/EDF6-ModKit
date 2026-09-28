@@ -1,0 +1,11 @@
+{
+  "name": "Armor multiplier x10",
+  "version": "1.0.0",
+  "author": "",
+  "description": "Multiplica por 10 la armadura que dan las cajas a todas las clases. Como usa mul, se combina con otros mods que también la escalen.",
+  "patches": {
+    "DEFAULTPACKAGE/CONFIG.SGO": [
+      { "op": "mul", "path": "SoldierInit/*/3/1", "value": 10 }
+    ]
+  }
+}
