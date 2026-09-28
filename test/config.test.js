@@ -1,0 +1,53 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const fs = require('fs')
+const path = require('path')
+const config = require('../src/config')
+const { tmpdir, write } = require('./helpers')
+
+test('overlaps: misma carpeta, adentro y en Windows sin distinguir mayúsculas', () => {
+  assert.ok(config.overlaps('/juego/Mods', '/juego/Mods', 'linux'))
+  assert.ok(config.overlaps('/juego/Mods/mods', '/juego/Mods', 'linux'))
+  assert.ok(config.overlaps('/juego', '/juego/Mods', 'linux'))
+  assert.ok(!config.overlaps('/juego/mods', '/juego/Mods', 'linux'))
+  assert.ok(config.overlaps('/juego/mods', '/juego/Mods', 'win32'))
+  assert.ok(!config.overlaps('/juego/ModKit/mods', '/juego/Mods', 'win32'))
+  assert.ok(!config.overlaps('/juego/Mods2', '/juego/Mods', 'linux'))
+})
+
+test('load: rechaza modsDir o vanillaDir dentro de la carpeta Mods del juego', () => {
+  const dir = tmpdir()
+  const file = path.join(dir, 'modkit.json')
+  write(file, JSON.stringify({ gameDir: '.', modsDir: 'Mods', vanillaDir: 'vanilla' }))
+  assert.throws(() => config.load(file), /modsDir.*se superpone/)
+  write(file, JSON.stringify({ gameDir: '.', modsDir: 'ModKit/mods', vanillaDir: 'Mods/vanilla' }))
+  assert.throws(() => config.load(file), /vanillaDir.*se superpone/)
+  write(file, JSON.stringify({ gameDir: '.', modsDir: 'ModKit/mods', vanillaDir: 'ModKit/vanilla' }))
+  assert.equal(config.load(file).outDir, path.join(dir, 'Mods'))
+})
+
+test('init: en la carpeta del juego crea el workspace en ModKit/ con gameDir ".."', () => {
+  const game = tmpdir()
+  write(path.join(game, 'EDF6.exe'), '')
+  fs.mkdirSync(path.join(game, 'Mods'))
+  const { file, workspace } = config.init(game)
+  assert.equal(workspace, path.join(game, 'ModKit'))
+  const cfg = config.load(file)
+  assert.equal(cfg.gameDir, game)
+  assert.equal(cfg.outDir, path.join(game, 'Mods'))
+  assert.ok(fs.existsSync(path.join(workspace, 'mods')))
+  assert.ok(fs.existsSync(path.join(workspace, 'vanilla', 'LEEME.txt')))
+})
+
+test('init: fuera del juego pide la carpeta del juego y rechaza superponerse', () => {
+  const dir = tmpdir()
+  assert.throws(() => config.init(dir), /carpeta del juego/)
+  // Un workspace dentro de la carpeta Mods del juego se rechaza sin crear nada.
+  const game = tmpdir()
+  const modsOfGame = path.join(game, 'Mods')
+  fs.mkdirSync(modsOfGame)
+  assert.throws(() => config.init(path.join(modsOfGame, 'x'), game), /se superpone/)
+  assert.ok(!fs.existsSync(path.join(modsOfGame, 'x', 'modkit.json')))
+  const { file } = config.init(dir, game)
+  assert.ok(fs.existsSync(file))
+})

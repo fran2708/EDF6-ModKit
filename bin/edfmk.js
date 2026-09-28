@@ -14,7 +14,8 @@ const pkg = require('../package.json')
 const HELP = `edfmk ${pkg.version} — framework de mods para EDF6
 
 Uso:
-  edfmk init [carpeta del juego]     crea modkit.json, mods/ y vanilla/ en la carpeta actual
+  edfmk init [carpeta del juego]     crea modkit.json, mods/ y vanilla/ (en la carpeta del juego,
+                                     los crea en ModKit/ para no mezclarlos con Mods/)
   edfmk list                         mods encontrados y orden de carga
   edfmk build [--dry-run]            combina los mods activos y los escribe en Mods/
   edfmk clean                        quita lo que escribió el modkit y restaura respaldos
@@ -56,18 +57,9 @@ function printResult(result) {
 
 const commands = {
   init(args, opts) {
-    const file = path.resolve(opts.config || config.FILE)
-    if (fs.existsSync(file)) throw new Error(`${file} ya existe`)
-    const gameDir = args[0] || 'D:/Juegos/EARTH DEFENSE FORCE 6'
-    const raw = { gameDir, vanillaDir: 'vanilla', modsDir: 'mods', load: [] }
-    fs.writeFileSync(file, JSON.stringify(raw, null, 2) + '\n')
-    const dir = path.dirname(file)
-    fs.mkdirSync(path.join(dir, 'mods'), { recursive: true })
-    fs.mkdirSync(path.join(dir, 'vanilla'), { recursive: true })
-    fs.writeFileSync(path.join(dir, 'vanilla', 'LEEME.txt'),
-      'Poné acá los archivos originales del juego, extraídos de Root.cpk, con la misma\n' +
-      'estructura de carpetas que Mods (por ejemplo DEFAULTPACKAGE/CONFIG.SGO, WEAPON/...).\n' +
-      'El modkit aplica los parches sobre estos archivos.\n')
+    const dir = opts.config ? path.dirname(path.resolve(opts.config)) : process.cwd()
+    const { file, workspace } = config.init(dir, args[0])
+    if (workspace !== dir) console.log(`Esta es la carpeta del juego: el workspace va en ${workspace}`)
     console.log(`Creado ${file}`)
   },
 

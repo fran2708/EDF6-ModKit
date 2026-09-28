@@ -47,10 +47,31 @@ npm install
 npm link        # opcional: deja el comando edfmk disponible en cualquier carpeta
 ```
 
+## Dónde instalarlo
+
+El workspace del modkit (tus mods y los originales) va **separado** de la carpeta `Mods\` del
+juego, que es solo la salida del build. Lo más cómodo es una subcarpeta `ModKit\` junto al juego:
+
+```
+EARTH DEFENSE FORCE 6\
+  Mods\          <- lo que genera edfmk build y carga EDFModLoader; no editar a mano
+  ModKit\        <- workspace
+    modkit.json     ("gameDir": "..")
+    mods\           tus mods (fuente)
+    vanilla\        originales extraídos de Root.cpk
+```
+
+Corriendo `edfmk init` en la carpeta del juego se arma esto solo. Ojo: en Windows `mods` y `Mods`
+son la misma carpeta, así que el workspace nunca puede estar en la carpeta del juego directamente.
+El modkit se niega a correr si `modsDir` o `vanillaDir` se superponen con `Mods\`. `vanilla\`
+tampoco puede estar adentro de `Mods\`: EDFModLoader la cargaría como un mod.
+
 ## Uso
 
 ```bash
-edfmk init "D:/Juegos/EARTH DEFENSE FORCE 6"   # crea modkit.json, mods/ y vanilla/
+cd "D:/Juegos/EARTH DEFENSE FORCE 6"
+edfmk init                                       # crea ModKit/ con modkit.json, mods/ y vanilla/
+cd ModKit
 # copiar a vanilla/ los originales que se van a parchear, extraídos de Root.cpk
 edfmk import "ruta/a/un/mod/viejo" more-slots   # convierte un mod de archivos completos
 edfmk list
@@ -63,7 +84,7 @@ edfmk clean                                      # deja Mods/ como estaba
 
 ```json
 {
-  "gameDir": "D:/Juegos/EARTH DEFENSE FORCE 6",
+  "gameDir": "..",
   "vanillaDir": "vanilla",
   "modsDir": "mods",
   "load": ["more-slots", "armor-x10"]
