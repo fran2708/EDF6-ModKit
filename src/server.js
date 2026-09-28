@@ -11,7 +11,9 @@ const { loadMods } = require('./mods')
 const { build } = require('./build')
 const { deploy, clean, pendingChanges } = require('./deploy')
 const { installZip } = require('./zipimport')
+const { checkPatches } = require('./patcher')
 const { isPackaged, vanillaFor } = require('./workspace')
+const { createLoader } = require('./loader')
 
 const MAX_BODY = 1024 * 1024 * 1024 // 1 GB: some texture mods are big
 
@@ -38,7 +40,9 @@ function readBody(req) {
   })
 }
 
-function createApp(configFile) {
+// loader: see loader.js; injectable for tests.
+function createApp(configFile, { loader } = {}) {
+  loader = loader || createLoader({ cacheDir: path.join(path.dirname(configFile), '.cache', 'loader') })
   const pendingZips = new Map() // id -> { buffer, zipName }, while the user picks a variant
 
   const cfg = () => config.load(configFile)
@@ -52,6 +56,9 @@ function createApp(configFile) {
   function preview(c = cfg()) {
     const { active } = modsOf(c)
     const result = build(active, { vanilla: vanillaFor(c) })
+    const patches = checkPatches(result.outputs, c.outDir)
+    result.conflicts.push(...patches.conflicts)
+    result.notes.push(...patches.notes)
     return {
       result,
       summary: {
@@ -134,6 +141,19 @@ function createApp(configFile) {
       return { installed: r.installed, notes: r.notes, state: state() }
     },
 
+    'GET /api/loader': async (body, url) => {
+      const c = cfg()
+      if (!c.gameDir) throw new Error('"gameDir" is missing in modkit.json')
+      return loader.status(c.gameDir, { check: url.searchParams.get('check') === '1' })
+    },
+
+    'POST /api/loader/install': async () => {
+      const c = cfg()
+      if (!c.gameDir) throw new Error('"gameDir" is missing in modkit.json')
+      const result = await loader.install(c.gameDir)
+      return { result, status: await loader.status(c.gameDir, { check: true }) }
+    },
+
     'POST /api/remove': async body => {
       const { id } = JSON.parse(body)
       const c = cfg()
@@ -154,8 +174,8 @@ function send(res, status, body, type = 'application/json; charset=utf-8') {
   res.end(typeof body === 'string' ? body : JSON.stringify(body))
 }
 
-function startServer({ configFile, port = 0, token = crypto.randomBytes(16).toString('hex') }) {
-  const app = createApp(configFile)
+function startServer({ configFile, port = 0, token = crypto.randomBytes(16).toString('hex'), loader }) {
+  const app = createApp(configFile, { loader })
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1')
     try {

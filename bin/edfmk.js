@@ -12,6 +12,8 @@ const { importFolder } = require('../src/importer')
 const { ensureWorkspace, isPackaged, vanillaFor } = require('../src/workspace')
 const { fileKey } = require('../src/mods')
 const { startServer, openBrowser } = require('../src/server')
+const { checkPatches } = require('../src/patcher')
+const { createLoader } = require('../src/loader')
 const pkg = require('../package.json')
 
 const HELP = `edfmk ${pkg.version} — mod framework for EDF6
@@ -29,6 +31,8 @@ Usage:
   edfmk diff <original> <modified>   prints the operations that turn one into the other
   edfmk import <folder> <id>         turns a whole-file mod into mods/<id>
   edfmk extract <path> [...]         extracts original files from Root.cpk into vanilla/
+  edfmk loader                       EDFModLoader/Patcher status and latest official version
+  edfmk loader install [--force]     installs or updates them from the official GitHub release
 
 Without --config, it looks for modkit.json in the current folder or uses <game>/ModKit
 (creating it if needed).
@@ -99,6 +103,9 @@ const commands = {
     if (!cfg.outDir) throw new Error('"gameDir" or "outDir" is missing in modkit.json')
     const { active } = activeMods(cfg)
     const result = build(active, { vanilla: vanillaFor(cfg) })
+    const patches = checkPatches(result.outputs, cfg.outDir)
+    result.conflicts.push(...patches.conflicts)
+    result.notes.push(...patches.notes)
     printResult(result)
     if (result.errors.length) {
       console.log(`\nNothing was written: ${result.errors.length} error(s).`)
@@ -135,6 +142,28 @@ const commands = {
     console.log("If it didn't open by itself, paste that address into your browser.")
     console.log('Close this window to quit the ModKit.')
     if (!opts['no-browser']) openBrowser(url)
+  },
+
+  async loader(args, opts) {
+    const cfg = workspace(opts)
+    if (!cfg.gameDir) throw new Error('"gameDir" is missing in modkit.json')
+    const loader = createLoader({ cacheDir: path.join(path.dirname(cfg.file), '.cache', 'loader') })
+    if (args[0] === 'install') {
+      const r = await loader.install(cfg.gameDir, { force: !!opts.force })
+      for (const rel of r.written) console.log(`installed ${rel}`)
+      for (const rel of r.backedUp) console.log(`backed up the previous ${rel}`)
+      if (r.kept.length) console.log(`kept ${r.kept.length} existing file(s) (settings and patches are never overwritten)`)
+      console.log(`\nEDFModLoader ${r.tag} is installed in ${cfg.gameDir}`)
+      return
+    }
+    if (args[0]) throw new Error('Usage: edfmk loader [install] [--force]')
+    const s = await loader.status(cfg.gameDir, { check: true })
+    const state = { missing: 'not installed', installed: 'installed', foreign: 'winmm.dll belongs to another program' }
+    const version = s.installedTag ? ` (${s.installedTag})` : ''
+    console.log(`EDFModLoader: ${state[s.loader]}${version}`)
+    console.log(`Patcher:      ${s.patcher === 'installed' ? 'installed' : 'not installed'}`)
+    if (s.offline) console.log(`Latest:       couldn't check (${s.error})`)
+    else console.log(`Latest:       ${s.latestTag}${s.upToDate ? ' (up to date)' : ' — run "edfmk loader install"'}`)
   },
 
   status(args, opts) {

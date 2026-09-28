@@ -51,7 +51,12 @@ function locate(segs, vanilla, topDirs, exts = vanilla.extensions()) {
       if (rel) return { gameRel: rel, label: [...segs.slice(0, k), segs[j]].join('/') }
     }
   }
-  // 3. a new file inside a game folder: MyMod/UI/new.dds. Only with extensions the game uses in
+  // 3. a Patcher memory patch: MyMod/Mods/Patches/Something.txt. Patcher only reads that folder
+  //    (not ExtraPatches, which holds optional presets).
+  if (n >= 2 && /\.txt$/i.test(segs[n - 1]) && segs[n - 2].toLowerCase() === 'patches') {
+    return { gameRel: `Patches/${segs[n - 1]}`, label: segs.slice(0, n - 2).join('/') }
+  }
+  // 4. a new file inside a game folder: MyMod/UI/new.dds. Only with extensions the game uses in
   //    that folder, so readmes or sgott's .json files don't get installed.
   const ext = /\.[^.]+$/.exec(segs[n - 1])
   const top = segs.findIndex((s, i) => i < n - 1 && topDirs.has(s.toUpperCase()))

@@ -70,6 +70,11 @@
   dialog::backdrop { background: rgba(0,0,0,.45); }
   dialog label { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border-radius: 6px; cursor: pointer; }
   dialog label:hover { background: var(--bg); }
+  .loader { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .loader.err { background: var(--err-bg); border-color: var(--err); }
+  .loader.warn { background: var(--warn-bg); border-color: var(--warn); }
+  .loader.ok { padding: 10px 16px; }
+  .loader.ok #loaderText { color: var(--muted); font-size: 13px; }
   .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 14px; max-width: calc(100% - 32px); display: none; }
 </style>
 </head>
@@ -79,6 +84,11 @@
     <h1>EDF6 ModKit</h1>
     <span class="muted" id="game"></span>
   </header>
+
+  <section class="panel loader" id="loaderPanel" hidden>
+    <span id="loaderText"></span>
+    <button id="loaderBtn" class="primary" hidden></button>
+  </section>
 
   <section class="panel status">
     <span id="badge" class="badge">Loading…</span>
@@ -176,6 +186,7 @@ function humanize(text) {
 }
 
 function render() {
+  renderLoader()
   if (!state) return
   $('game').textContent = state.gameDir
   const p = state.preview
@@ -189,6 +200,10 @@ function render() {
   } else {
     badge.className = 'badge ok'
     badge.textContent = state.load.length ? 'All applied: ready to play' : 'No active mods'
+    if (state.load.length && loader && loader.loader && loader.loader !== 'installed') {
+      badge.className = 'badge warn'
+      badge.textContent = 'Applied, but the game won’t load mods until EDFModLoader is installed'
+    }
   }
   $('apply').disabled = busy || !!p.errors.length || !p.pending
   $('restore').disabled = busy
@@ -358,7 +373,82 @@ $('file').onchange = e => {
   if (file) importZip(file)
 }
 
+// --- mod loader (EDFModLoader + Patcher) ---
+
+let loader = null
+
+function renderLoader() {
+  const panel = $('loaderPanel')
+  const text = $('loaderText')
+  const btn = $('loaderBtn')
+  if (!loader) return
+  panel.hidden = false
+  btn.hidden = true
+  btn.disabled = busy
+  const tag = loader.latestTag ? ` ${loader.latestTag}` : ''
+  const offer = label => {
+    if (loader.offline) {
+      text.textContent += ' Connect to the internet and reload this page to install it.'
+      return
+    }
+    btn.textContent = label
+    btn.hidden = false
+  }
+  if (loader.error && !loader.loader) {
+    panel.className = 'panel loader warn'
+    text.textContent = `Couldn’t check the mod loader: ${loader.error}`
+  } else if (loader.loader === 'foreign') {
+    panel.className = 'panel loader err'
+    text.textContent = 'The game folder has a winmm.dll from another program, so EDFModLoader can’t be installed ' +
+      'automatically. Remove or rename that file, then reload this page.'
+  } else if (loader.loader === 'missing') {
+    panel.className = 'panel loader err'
+    text.textContent = 'EDFModLoader isn’t installed: the game won’t load your mods.'
+    offer(`Install EDFModLoader${tag}`)
+  } else if (loader.patcher === 'missing') {
+    panel.className = 'panel loader warn'
+    text.textContent = 'The Patcher plugin isn’t installed: memory patches (Mods/Patches) won’t work.'
+    offer(`Install Patcher${tag}`)
+  } else if (loader.offline) {
+    panel.className = 'panel loader ok'
+    text.textContent = `EDFModLoader${loader.installedTag ? ' ' + loader.installedTag : ''} and Patcher are installed. ` +
+      'Couldn’t check for updates (offline?).'
+  } else if (!loader.upToDate) {
+    panel.className = 'panel loader warn'
+    text.textContent = `A new EDFModLoader version is available (${loader.latestTag}` +
+      `${loader.installedTag ? `, you have ${loader.installedTag}` : ''}).`
+    offer(`Update to ${loader.latestTag}`)
+  } else {
+    panel.className = 'panel loader ok'
+    text.textContent = `EDFModLoader ${loader.installedTag} and Patcher are installed and up to date.`
+  }
+}
+
+async function checkLoader() {
+  try {
+    loader = await api('GET', '/api/loader?check=1')
+  } catch (e) {
+    loader = { error: e.message }
+  }
+  renderLoader()
+  render()
+}
+
+$('loaderBtn').onclick = () => run(async () => {
+  const r = await api('POST', '/api/loader/install')
+  loader = r.status
+  const lines = [
+    ...r.result.written.map(rel => `installed ${rel}`),
+    ...r.result.backedUp.map(rel => `backed up the previous ${rel}`),
+  ]
+  if (r.result.kept.length) lines.push(`kept ${r.result.kept.length} existing file(s) (settings and patches are never overwritten)`)
+  showLog(`EDFModLoader ${r.result.tag} is installed.`, lines)
+  toast(`EDFModLoader ${r.result.tag} installed`)
+  renderLoader()
+})
+
 run(async () => (state = await api('GET', '/api/state')))
+checkLoader()
 </script>
 </body>
 </html>

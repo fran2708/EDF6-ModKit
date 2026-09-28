@@ -10,7 +10,11 @@ other.
 2. Put it in the game folder, next to `EDF6.exe`.
 3. Double-click it. The first time it creates a `ModKit\` folder with everything it needs, and the
    ModKit opens in your browser.
-4. Drop a mod's `.zip` on the page (Nexus mods that replace files work too; if the zip comes in
+4. If the page says EDFModLoader isn't installed, press **Install EDFModLoader**. It downloads the
+   latest official release of [EDFModLoader](https://github.com/BlueAmulet/EDFModLoader) and its
+   Patcher plugin from GitHub (checked against the published checksums). The same button offers
+   updates later; your `ModLoader.ini` and patch files are never overwritten.
+5. Drop a mod's `.zip` on the page (Nexus mods that replace files work too; if the zip comes in
    several versions, it asks which one you want). Tick the mods you want, put them in order and
    press **Apply**. To go back to the unmodded game: **Restore original**.
 
@@ -97,6 +101,8 @@ edfmk list
 edfmk build --dry-run                            # shows what it would do and the conflicts
 edfmk build
 edfmk clean                                      # puts Mods/ back the way it was
+edfmk loader                                     # EDFModLoader/Patcher status and latest version
+edfmk loader install                             # installs or updates them from the official release
 ```
 
 `modkit.json`:
@@ -176,6 +182,33 @@ The build warns (and carries on, with the last mod winning) when:
 
 If an operation fails (missing path, wrong type, missing original) nothing is written.
 
+### Memory patches (Patcher)
+
+Patcher `.txt` files go in `files/Patches/<Name>.txt` and are deployed to `Mods/Patches/`. Zips
+from Nexus that contain `Mods/Patches/*.txt` are imported as such (`ExtraPatches/` holds optional
+presets and is left out, as are loader files like `winmm.dll` or `Patcher.dll`).
+
+Memory patches overwrite raw game code, so they can't be merged. The ModKit reads them and warns
+when two patch files (from mods or placed in `Mods/Patches` by hand) write the same bytes: same
+hex address, or the same `aob` pattern with overlapping offsets. Patcher would apply both and
+the file loaded last would win, which can crash the game, so only one should be enabled.
+
+## EDFModLoader
+
+The game only reads `Mods/` when [EDFModLoader](https://github.com/BlueAmulet/EDFModLoader)
+(`winmm.dll` + `ModLoader.ini` next to `EDF6.exe`) is installed, and patches in `Mods/Patches`
+need its Patcher plugin (`Mods/Plugins/Patcher.dll`). The ModKit doesn't ship them: the UI button
+or `edfmk loader install` downloads `EDFModLoader.zip` and `Plugins6.zip` from the latest official
+release and verifies them against the SHA-256 GitHub publishes.
+
+- `winmm.dll` and `Patcher.dll` are always updated; the previous copies are backed up to
+  `Mods/.modkit/loader-backup/`.
+- `ModLoader.ini` and the default patch files are only added if missing, so your settings and
+  edits survive updates.
+- A `winmm.dll` that isn't EDFModLoader (another program using the same name) is never replaced
+  unless you run `edfmk loader install --force`.
+- If the game is running the files are locked: close it and try again.
+
 ## Status
 
 Prototype. Tested with the 320 SGO/DSGO files of a real Mods folder (`node tools/roundtrip.js
@@ -184,7 +217,7 @@ and by reproducing "More slots + Armor x10" from two separate mods.
 
 To do:
 
-- Patch Patcher.dll `.txt` files and `.AS` scripts.
+- Merge `.AS` scripts.
 - Content-based selectors in paths (e.g. "the weapon whose id is X") so patches don't depend on
   indexes.
 - Import mods packed as `.7z` and `.rar` (only `.zip` for now).
