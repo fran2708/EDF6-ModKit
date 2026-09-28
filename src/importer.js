@@ -11,6 +11,7 @@ const codec = require('./codec')
 const { diff } = require('./diff')
 const { fileKey, listFiles, indexDir, uniqueId, loadMods } = require('./mods')
 const { unmanagedFiles, adopt } = require('./deploy')
+const { gameTopDirs } = require('./vanilla')
 
 // files: which files of srcDir to import (all of them by default).
 function importFolder(srcDir, destDir, { vanilla, vanillaDir, id, name, source, files } = {}) {
@@ -56,7 +57,7 @@ function importFolder(srcDir, destDir, { vanilla, vanillaDir, id, name, source, 
 // Imports the files installed by hand in outDir (the game's Mods folder) as one mod, and hands
 // them over to the ModKit. Returns null if there is nothing to import.
 function importInstalled({ outDir, modsDir, vanilla }) {
-  const files = unmanagedFiles(outDir, new Set(loadMods(modsDir).map(m => m.id)))
+  const files = unmanagedFiles(outDir, new Set(loadMods(modsDir).map(m => m.id)), gameTopDirs(vanilla))
   if (!files.length) return null
   const id = uniqueId(modsDir, 'previously-installed')
   const result = importFolder(outDir, path.join(modsDir, id), {

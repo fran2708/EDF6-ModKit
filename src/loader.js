@@ -18,6 +18,7 @@ const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const { unzipSync } = require('fflate')
+const { busy } = require('./deploy')
 
 const REPO = 'BlueAmulet/EDFModLoader'
 const ASSETS = ['EDFModLoader.zip', 'Plugins6.zip']
@@ -60,10 +61,6 @@ function releaseFiles(buffer) {
     if (ALWAYS.test(rel) || IF_MISSING.test(rel)) out.set(rel, Buffer.from(data))
   }
   return out
-}
-
-function busy(e) {
-  return e && (e.code === 'EBUSY' || e.code === 'EPERM' || e.code === 'EACCES')
 }
 
 function createLoader({ fetch = globalThis.fetch, cacheDir = null } = {}) {
@@ -196,4 +193,4 @@ function createLoader({ fetch = globalThis.fetch, cacheDir = null } = {}) {
   return { latest, status, install }
 }
 
-module.exports = { createLoader, releaseFiles, REPO }
+module.exports = { createLoader, releaseFiles, REPO, PATCHER_DLL }

@@ -18,6 +18,7 @@ const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const { fileKey, listFiles } = require('./mods')
+const { isGameRel } = require('./vanilla')
 
 const STATE_DIR = '.modkit'
 // Folders of Mods/ that belong to the ModKit or to EDFModLoader/Patcher rather than to a mod.
@@ -116,48 +117,80 @@ function isSettled(outDir, entry) {
   return entry.adopted && !fs.existsSync(path.join(outDir, entry.rel))
 }
 
-// outputs: Map key -> { rel, buffer, mods }
+// A plugin's data file (out.userData) that the player or the plugin changed: it's kept as is.
+// That's when it differs from the build and either the ModKit never wrote it or it changed since.
+function keepsUserFile(out, current, hash, prev) {
+  return !!out.userData && !!current && current !== hash && (!prev || current !== prev.sha1)
+}
+
+// true for the errors Windows gives when a file is open elsewhere (a plugin DLL the game loaded).
+function busy(e) {
+  return e && (e.code === 'EBUSY' || e.code === 'EPERM' || e.code === 'EACCES')
+}
+
+function inUse(e, rel) {
+  if (!busy(e) || !rel) return e
+  return new Error(`The game seems to be running (${rel} is in use). Close the game and try again.`)
+}
+
+// outputs: Map key -> { rel, buffer, mods, userData? }
 function deploy(outDir, outputs, { dryRun = false } = {}) {
   const log = []
   const old = readManifest(outDir)
-  const next = { files: {} }
+  // Starts as the old manifest and is updated file by file, so if it stops halfway (the game
+  // has a file open) what's saved still matches what's on disk.
+  const next = { files: { ...old.files } }
+  let at = null
 
-  for (const [key, entry] of Object.entries(old.files)) {
-    if (outputs.has(key)) continue
-    if (dryRun) {
-      if (!isSettled(outDir, entry)) log.push(`would remove ${entry.rel}`)
-    } else if (entry.adopted) {
-      const kept = removeAdopted(outDir, entry, log)
-      if (kept) next.files[key] = kept
-    } else {
-      restoreOrDelete(outDir, entry.rel, entry, log)
+  try {
+    for (const [key, entry] of Object.entries(old.files)) {
+      if (outputs.has(key)) continue
+      at = entry.rel
+      if (dryRun) {
+        if (!isSettled(outDir, entry)) log.push(`would remove ${entry.rel}`)
+      } else if (entry.adopted) {
+        const kept = removeAdopted(outDir, entry, log)
+        if (kept) next.files[key] = kept
+        else delete next.files[key]
+      } else {
+        restoreOrDelete(outDir, entry.rel, entry, log)
+        delete next.files[key]
+      }
     }
+
+    for (const [key, out] of outputs) {
+      at = out.rel
+      const target = path.join(outDir, out.rel)
+      const hash = sha1(out.buffer)
+      const current = hashOf(target)
+      const prev = old.files[key]
+
+      if (keepsUserFile(out, current, hash, prev)) {
+        log.push(`${dryRun ? 'would keep' : 'kept'} your version of ${out.rel}`)
+        continue
+      }
+      if (dryRun) {
+        if (current !== hash) log.push(`${current ? 'would replace' : 'would write'} ${out.rel} (${out.mods.join(', ')})`)
+        continue
+      }
+      // A file the ModKit didn't write is backed up even if identical: a later clean has to be
+      // able to bring it back.
+      if (current && !prev) backupFile(outDir, out.rel, log)
+      else if (current && current !== hash && current !== prev.sha1) {
+        backupFile(outDir, out.rel, log, `.edited-${Date.now()}`)
+      }
+      if (current !== hash) {
+        fs.mkdirSync(path.dirname(target), { recursive: true })
+        fs.writeFileSync(target, out.buffer)
+        log.push(`wrote ${out.rel} (${out.mods.join(', ')})`)
+      }
+      next.files[key] = { rel: out.rel, sha1: hash, mods: out.mods, ...(prev?.adopted && { adopted: prev.adopted }) }
+    }
+  } catch (e) {
+    throw inUse(e, at)
+  } finally {
+    if (!dryRun) writeManifest(outDir, next)
   }
-
-  for (const [key, out] of outputs) {
-    const target = path.join(outDir, out.rel)
-    const hash = sha1(out.buffer)
-    const current = hashOf(target)
-    const prev = old.files[key]
-
-    if (dryRun) {
-      if (current !== hash) log.push(`${current ? 'would replace' : 'would write'} ${out.rel} (${out.mods.join(', ')})`)
-      continue
-    }
-    // A file the ModKit didn't write is backed up even if identical: a later clean has to be
-    // able to bring it back.
-    if (current && !prev) backupFile(outDir, out.rel, log)
-    else if (current && current !== hash && current !== prev.sha1) {
-      backupFile(outDir, out.rel, log, `.edited-${Date.now()}`)
-    }
-    next.files[key] = { rel: out.rel, sha1: hash, mods: out.mods, ...(prev?.adopted && { adopted: prev.adopted }) }
-    if (current === hash) continue
-    fs.mkdirSync(path.dirname(target), { recursive: true })
-    fs.writeFileSync(target, out.buffer)
-    log.push(`wrote ${out.rel} (${out.mods.join(', ')})`)
-  }
-
-  if (!dryRun) writeManifest(outDir, next)
   return log
 }
 
@@ -165,8 +198,10 @@ function deploy(outDir, outputs, { dryRun = false } = {}) {
 function pendingChanges(outDir, outputs) {
   const old = readManifest(outDir)
   let count = 0
-  for (const out of outputs.values()) {
-    if (hashOf(path.join(outDir, out.rel)) !== sha1(out.buffer)) count++
+  for (const [key, out] of outputs) {
+    const hash = sha1(out.buffer)
+    const current = hashOf(path.join(outDir, out.rel))
+    if (current !== hash && !keepsUserFile(out, current, hash, old.files[key])) count++
   }
   for (const [key, entry] of Object.entries(old.files)) {
     if (!outputs.has(key) && !isSettled(outDir, entry)) count++
@@ -177,7 +212,9 @@ function pendingChanges(outDir, outputs) {
 // Files in Mods/ the ModKit didn't write (mods installed by hand), as rel paths.
 // modIds: the mods that exist; a file adopted by a mod that has since been deleted counts as
 // installed by hand again once it's back to the original (not while it holds a build result).
-function unmanagedFiles(outDir, modIds) {
+// dirs: the game's top folders (gameTopDirs); only files in them count, so a plugin's data folder
+// (Compendium/...) or loose files in Mods/ are never taken for a mod.
+function unmanagedFiles(outDir, modIds, dirs) {
   if (!outDir) return []
   const managed = readManifest(outDir).files
   const { backup } = statePaths(outDir)
@@ -185,13 +222,13 @@ function unmanagedFiles(outDir, modIds) {
     hashOf(path.join(outDir, entry.rel)) === hashOf(path.join(backup, entry.rel))
   return listFiles(outDir).filter(rel => {
     const entry = managed[fileKey(rel)]
-    return !RESERVED.test(rel) && (!entry || orphan(entry))
+    return !RESERVED.test(rel) && (!dirs || isGameRel(rel, dirs)) && (!entry || orphan(entry))
   })
 }
 
 // Warnings for files installed by hand that deploying `outputs` would replace.
-function displacedNotes(outDir, outputs, modIds) {
-  return unmanagedFiles(outDir, modIds)
+function displacedNotes(outDir, outputs, modIds, dirs) {
+  return unmanagedFiles(outDir, modIds, dirs)
     .filter(rel => outputs.has(fileKey(rel)))
     .map(rel => `${rel} was installed by hand and applying will replace it; import it as a mod to keep it`)
 }
@@ -214,17 +251,21 @@ function adopt(outDir, rels, id) {
 function clean(outDir) {
   const log = []
   const old = readManifest(outDir)
-  const next = { files: {} }
-  for (const [key, entry] of Object.entries(old.files)) {
-    if (entry.adopted) {
-      const kept = restoreAdopted(outDir, entry, log)
+  const next = { files: { ...old.files } } // see deploy
+  let at = null
+  try {
+    for (const [key, entry] of Object.entries(old.files)) {
+      at = entry.rel
+      const kept = entry.adopted ? restoreAdopted(outDir, entry, log) : restoreOrDelete(outDir, entry.rel, entry, log)
       if (kept) next.files[key] = kept
-    } else {
-      restoreOrDelete(outDir, entry.rel, entry, log)
+      else delete next.files[key]
     }
+  } catch (e) {
+    throw inUse(e, at)
+  } finally {
+    writeManifest(outDir, next)
   }
-  writeManifest(outDir, next)
   return log
 }
 
-module.exports = { deploy, clean, readManifest, pendingChanges, unmanagedFiles, displacedNotes, adopt }
+module.exports = { deploy, clean, readManifest, pendingChanges, unmanagedFiles, displacedNotes, adopt, busy }

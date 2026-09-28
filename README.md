@@ -28,6 +28,13 @@ Already had mods installed by hand in `Mods\`? The page offers **Import as a mod
 mod ("Previously installed mods"), enabled first in the load order, so they combine with the mods
 you add instead of being replaced. **Restore original** still puts them back exactly as they were.
 
+Plugins for EDFModLoader (for example EDF6Compendium) install the same way: drop their zip. The
+zip has to be laid out like the game folder (`Mods/Plugins/<plugin>.dll`, plus the plugin's own
+folder such as `Mods/Compendium/`). Your settings and progress in that folder are never
+overwritten or deleted: turning the plugin off removes its DLL and the files you haven't changed,
+and updating it keeps the files you or the plugin edited. Close the game before pressing **Apply**:
+Windows doesn't let the ModKit replace a plugin the game has loaded.
+
 Windows may show "Windows protected your PC" the first time, because the exe isn't signed:
 "More info" → "Run anyway".
 

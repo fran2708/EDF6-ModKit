@@ -12,6 +12,7 @@ const { apply } = require('./patch')
 const { diff } = require('./diff')
 const { analyze } = require('./conflicts')
 const { fileKey, indexDir } = require('./mods')
+const { gameTopDirs, isUserData } = require('./vanilla')
 
 function collectSteps(mods, vanilla, notes) {
   const steps = new Map() // key -> { rel, steps: [] }
@@ -101,13 +102,16 @@ function build(mods, { vanilla, vanillaDir }) {
   const outputs = new Map()
 
   const steps = collectSteps(mods, vanilla, notes)
+  let dirs = null // read only if there are outputs, since it may open the CPKs
   for (const [key, entry] of steps) {
     const buffer = buildFile(key, entry, vanilla, events, errors)
     if (buffer) {
+      dirs = dirs || gameTopDirs(vanilla)
       outputs.set(key, {
         rel: entry.rel,
         buffer,
         mods: [...new Set(entry.steps.map(s => s.mod))],
+        ...(isUserData(entry.rel, dirs) && { userData: true }),
       })
     }
   }

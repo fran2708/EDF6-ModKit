@@ -22,7 +22,7 @@ function setup() {
   const hand = configDoc()
   hand.variables[2].value = 'By hand'
   write(path.join(out, CONFIG), codec.encode(hand))
-  write(path.join(out, 'TEXTURE', 'SKIN.DDS'), 'texture')
+  write(path.join(out, 'DEFAULTPACKAGE', 'SKIN.DDS'), 'texture')
   write(path.join(out, 'Plugins', 'Patcher.dll'), 'dll')
   write(path.join(out, 'Patches', 'fov.txt'), '')
   write(path.join(dir, 'ModKit', 'mods', 'armor', 'mod.json'), JSON.stringify({
@@ -45,9 +45,9 @@ const value = (file, p) => resolve(codec.readDoc(file), p)[0].node.value
 
 test('unmanagedFiles: files installed by hand, not the loader or the ModKit ones', () => {
   const t = setup()
-  assert.deepEqual(unmanagedFiles(t.out).sort(), [CONFIG, 'TEXTURE/SKIN.DDS'])
+  assert.deepEqual(unmanagedFiles(t.out).sort(), [CONFIG, 'DEFAULTPACKAGE/SKIN.DDS'])
   apply(t, ['armor'])
-  assert.deepEqual(unmanagedFiles(t.out), ['TEXTURE/SKIN.DDS'])
+  assert.deepEqual(unmanagedFiles(t.out), ['DEFAULTPACKAGE/SKIN.DDS'])
 })
 
 test('displacedNotes: warns before a hand-installed file gets replaced', () => {
@@ -64,7 +64,7 @@ test('importInstalled: the old mod combines with ModKit mods, and can be turned 
   const r = importInstalled({ outDir: t.out, modsDir: t.modsDir, vanilla: t.vanilla })
   assert.equal(r.id, 'previously-installed')
   assert.deepEqual(r.patched, [CONFIG])
-  assert.deepEqual(r.copied, ['TEXTURE/SKIN.DDS'])
+  assert.deepEqual(r.copied, ['DEFAULTPACKAGE/SKIN.DDS'])
   assert.deepEqual(unmanagedFiles(t.out), [])
   assert.equal(importInstalled({ outDir: t.out, modsDir: t.modsDir, vanilla: t.vanilla }), null)
 
@@ -73,13 +73,13 @@ test('importInstalled: the old mod combines with ModKit mods, and can be turned 
   const config = path.join(t.out, CONFIG)
   assert.equal(value(config, 'name.en'), 'By hand')
   assert.equal(value(config, 'SoldierInit/0/3/0'), 2000)
-  assert.equal(fs.readFileSync(path.join(t.out, 'TEXTURE', 'SKIN.DDS'), 'utf8'), 'texture')
+  assert.equal(fs.readFileSync(path.join(t.out, 'DEFAULTPACKAGE', 'SKIN.DDS'), 'utf8'), 'texture')
 
   // Disabling the imported mod removes it instead of bringing the backup back.
   const { result } = apply(t, ['armor'])
   assert.equal(value(config, 'name.en'), 'Config')
   assert.equal(value(config, 'SoldierInit/0/3/0'), 2000)
-  assert.equal(fs.existsSync(path.join(t.out, 'TEXTURE', 'SKIN.DDS')), false)
+  assert.equal(fs.existsSync(path.join(t.out, 'DEFAULTPACKAGE', 'SKIN.DDS')), false)
   assert.equal(pendingChanges(t.out, result.outputs), 0)
   apply(t, [])
   assert.equal(fs.existsSync(config), false)
@@ -87,18 +87,18 @@ test('importInstalled: the old mod combines with ModKit mods, and can be turned 
   // Restore original puts Mods/ back the way it was before the ModKit.
   clean(t.out)
   assert.deepEqual(fs.readFileSync(config), t.original)
-  assert.equal(fs.readFileSync(path.join(t.out, 'TEXTURE', 'SKIN.DDS'), 'utf8'), 'texture')
+  assert.equal(fs.readFileSync(path.join(t.out, 'DEFAULTPACKAGE', 'SKIN.DDS'), 'utf8'), 'texture')
 })
 
 test('importInstalled: a file edited by hand after being turned off is left alone', () => {
   const t = setup()
   importInstalled({ outDir: t.out, modsDir: t.modsDir, vanilla: t.vanilla })
   apply(t, ['previously-installed'])
-  write(path.join(t.out, 'TEXTURE', 'SKIN.DDS'), 'new texture')
+  write(path.join(t.out, 'DEFAULTPACKAGE', 'SKIN.DDS'), 'new texture')
   const { log } = apply(t, [])
-  assert.ok(log.some(l => /left TEXTURE\/SKIN\.DDS alone/.test(l)))
-  assert.equal(fs.readFileSync(path.join(t.out, 'TEXTURE', 'SKIN.DDS'), 'utf8'), 'new texture')
-  assert.deepEqual(unmanagedFiles(t.out), ['TEXTURE/SKIN.DDS'])
+  assert.ok(log.some(l => /left DEFAULTPACKAGE\/SKIN\.DDS alone/.test(l)))
+  assert.equal(fs.readFileSync(path.join(t.out, 'DEFAULTPACKAGE', 'SKIN.DDS'), 'utf8'), 'new texture')
+  assert.deepEqual(unmanagedFiles(t.out), ['DEFAULTPACKAGE/SKIN.DDS'])
 })
 
 test('importInstalled: after Restore original the files are not offered again, and apply/restore repeat', () => {
@@ -116,7 +116,7 @@ test('importInstalled: after Restore original the files are not offered again, a
   // Restored but the imported mod is off: applying takes the files out again.
   apply(t, ['armor'])
   assert.equal(value(config, 'name.en'), 'Config')
-  assert.equal(fs.existsSync(path.join(t.out, 'TEXTURE', 'SKIN.DDS')), false)
+  assert.equal(fs.existsSync(path.join(t.out, 'DEFAULTPACKAGE', 'SKIN.DDS')), false)
 })
 
 test('importInstalled: once the imported mod is deleted, its restored files can be imported again', () => {
@@ -125,7 +125,7 @@ test('importInstalled: once the imported mod is deleted, its restored files can 
   apply(t, ['previously-installed'])
   fs.rmSync(path.join(t.modsDir, 'previously-installed'), { recursive: true })
   clean(t.out)
-  assert.deepEqual(unmanagedFiles(t.out, new Set(['armor'])).sort(), [CONFIG, 'TEXTURE/SKIN.DDS'])
+  assert.deepEqual(unmanagedFiles(t.out, new Set(['armor'])).sort(), [CONFIG, 'DEFAULTPACKAGE/SKIN.DDS'])
   const r = importInstalled({ outDir: t.out, modsDir: t.modsDir, vanilla: t.vanilla })
   assert.equal(r.id, 'previously-installed')
   apply(t, ['previously-installed'])
@@ -140,7 +140,7 @@ test('importInstalled: a deleted imported mod whose files still hold a build res
   apply(t, ['previously-installed', 'armor'])
   fs.rmSync(path.join(t.modsDir, 'previously-installed'), { recursive: true })
   // CONFIG.SGO now mixes the old mod with armor: importing it would bake armor in.
-  assert.deepEqual(unmanagedFiles(t.out, new Set(['armor'])), ['TEXTURE/SKIN.DDS'])
+  assert.deepEqual(unmanagedFiles(t.out, new Set(['armor'])), ['DEFAULTPACKAGE/SKIN.DDS'])
   apply(t, ['armor'])
   assert.deepEqual(unmanagedFiles(t.out, new Set(['armor'])), [])
 })

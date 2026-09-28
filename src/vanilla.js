@@ -86,4 +86,27 @@ function vanillaProvider({ vanillaDir, gameDir }) {
   return { get, relOf, topDirs, extensions, archives: () => loadArchives() }
 }
 
-module.exports = { vanillaProvider, cpkFiles }
+// The game's top-level folders (DEFAULTPACKAGE, WEAPON, ...), upper case. Works with a provider
+// or with a plain Map from indexDir().
+function gameTopDirs(vanilla) {
+  if (vanilla.topDirs) return vanilla.topDirs()
+  const dirs = new Set()
+  for (const k of vanilla.keys()) if (k.includes('/')) dirs.add(k.split('/')[0])
+  return dirs
+}
+
+// true if rel (a path inside Mods/) is in one of the game's folders, rather than a plugin's data
+// folder or a loose file.
+function isGameRel(rel, dirs) {
+  const segs = rel.replace(/\\/g, '/').split('/')
+  return segs.length > 1 && dirs.has(segs[0].toUpperCase())
+}
+
+// true for a plugin's data (Compendium/config.ini...): not a game file, and not in the folders
+// EDFModLoader and Patcher read (Plugins, Patches, ExtraPatches). The player or the plugin may
+// change these files, so deploy never overwrites or deletes an edited one.
+function isUserData(rel, dirs) {
+  return !isGameRel(rel, dirs) && !/^(Plugins|Patches|ExtraPatches)[\\/]/i.test(rel)
+}
+
+module.exports = { vanillaProvider, cpkFiles, gameTopDirs, isGameRel, isUserData }

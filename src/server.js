@@ -14,6 +14,7 @@ const { importInstalled } = require('./importer')
 const { installZip } = require('./zipimport')
 const { checkPatches } = require('./patcher')
 const { isPackaged, vanillaFor } = require('./workspace')
+const { gameTopDirs } = require('./vanilla')
 const { createLoader } = require('./loader')
 const pkg = require('../package.json')
 
@@ -57,13 +58,17 @@ function createApp(configFile, { loader } = {}) {
 
   function preview(c = cfg()) {
     const { all, active } = modsOf(c)
-    const result = build(active, { vanilla: vanillaFor(c) })
+    const vanilla = vanillaFor(c)
+    const ids = new Set(all.map(m => m.id))
+    const dirs = gameTopDirs(vanilla)
+    const result = build(active, { vanilla })
     const patches = checkPatches(result.outputs, c.outDir)
     result.conflicts.push(...patches.conflicts)
     result.notes.push(...patches.notes)
-    result.notes.push(...displacedNotes(c.outDir, result.outputs, new Set(all.map(m => m.id))))
+    result.notes.push(...displacedNotes(c.outDir, result.outputs, ids, dirs))
     return {
       result,
+      unmanaged: unmanagedFiles(c.outDir, ids, dirs),
       summary: {
         conflicts: result.conflicts,
         errors: result.errors,
@@ -77,6 +82,7 @@ function createApp(configFile, { loader } = {}) {
   function state() {
     const c = cfg()
     const { all } = modsOf(c)
+    const p = preview(c)
     return {
       version: pkg.version,
       gameDir: c.gameDir,
@@ -91,8 +97,8 @@ function createApp(configFile, { loader } = {}) {
         operations: Object.values(m.patches).reduce((n, ops) => n + ops.length, 0),
         files: m.files.length,
       })),
-      unmanaged: unmanagedFiles(c.outDir, new Set(all.map(m => m.id))),
-      preview: preview(c).summary,
+      unmanaged: p.unmanaged,
+      preview: p.summary,
     }
   }
 

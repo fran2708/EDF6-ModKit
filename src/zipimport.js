@@ -1,7 +1,9 @@
 // Installing mods from a .zip, as they come from Nexus or other sites.
 //
-// Two cases:
+// Three cases:
 //   - the zip has one or more mod.json files: they are ModKit mods and are copied as is
+//   - it has a DLL in a Plugins folder: an EDFModLoader plugin, laid out like the game's Mods
+//     folder (Mods/Plugins/X.dll + Mods/X/...); everything under that folder is installed as is
 //   - otherwise it's a "whole file" mod: we have to work out which game file each entry maps
 //     to, skipping wrapper folders ("MyMod/", "Mods/") and detecting variants ("Armor x2/",
 //     "Armor x10/"), which are offered so the user picks one
@@ -15,6 +17,11 @@ const { unzipSync } = require('fflate')
 const { fileKey, uniqueId } = require('./mods')
 const { importFolder } = require('./importer')
 const { looksLikePatch, patchInfo } = require('./patcher')
+const { PATCHER_DLL } = require('./loader')
+const { gameTopDirs, isUserData } = require('./vanilla')
+
+// Files a plugin zip must not replace: they come with EDFModLoader (see loader.js).
+const LOADER_FILES = new Set([fileKey(PATCHER_DLL.replace(/^Mods\//, ''))])
 
 const IGNORED = /(^|\/)(__MACOSX\/|\.DS_Store$|Thumbs\.db$)/i
 
@@ -65,6 +72,25 @@ function locate(segs, vanilla, topDirs, exts = vanilla.extensions()) {
   return { gameRel: segs.slice(top).join('/'), label: segs.slice(0, top).join('/') }
 }
 
+// A plugin zip: the files in folders under root (the folder that holds Plugins/), at their path
+// inside Mods/. Loose files in root and anything outside it (readmes) are ignored.
+function analyzePlugin(entries, root) {
+  const prefix = fileKey(root.join('/'))
+  const files = []
+  const ignored = []
+  const skipped = []
+  for (const e of entries) {
+    if (e.segs.length < root.length + 2 || fileKey(e.segs.slice(0, root.length).join('/')) !== prefix) {
+      ignored.push(e.segs.join('/'))
+      continue
+    }
+    const rel = e.segs.slice(root.length).join('/')
+    if (LOADER_FILES.has(fileKey(rel))) skipped.push(rel)
+    else files.push({ rel, data: e.data })
+  }
+  return { kind: 'plugin', files, ignored, skipped }
+}
+
 // Analyzes the zip without installing anything.
 function analyzeZip(buffer, vanilla) {
   const entries = safeEntries(buffer)
@@ -84,6 +110,11 @@ function analyzeZip(buffer, vanilla) {
       }),
     }
   }
+
+  // Patch packs often bundle the loader's own Patcher.dll: that alone doesn't make a plugin.
+  const dll = entries.find(e => e.segs.length >= 2 && /\.dll$/i.test(e.segs.at(-1)) &&
+    e.segs.at(-2).toLowerCase() === 'plugins' && !LOADER_FILES.has(fileKey(e.segs.slice(-2).join('/'))))
+  if (dll) return analyzePlugin(entries, dll.segs.slice(0, -2))
 
   const topDirs = vanilla.topDirs()
   const exts = vanilla.extensions()
@@ -165,6 +196,38 @@ function variantName(label) {
   return label ? label.split('/').at(-1) : '(base)'
 }
 
+// Builds a folder with the game's structure and imports it like any old-style mod.
+function importFiles(files, { modsDir, vanilla, name, source }) {
+  const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'edfmk-zip-'))
+  try {
+    writeFiles(staging, files)
+    const id = uniqueId(modsDir, slug(name))
+    const result = importFolder(staging, path.join(modsDir, id), { vanilla, id, name, source })
+    return { id, notes: result.notes }
+  } finally {
+    fs.rmSync(staging, { recursive: true, force: true })
+  }
+}
+
+function installPlugin(analysis, { zipName, modsDir, vanilla }) {
+  if (!analysis.files.length) throw new Error('The plugin zip has nothing to install besides EDFModLoader files')
+  const { id, notes } = importFiles(analysis.files, {
+    modsDir, vanilla, name: cleanZipName(zipName), source: path.basename(zipName),
+  })
+  const dirs = gameTopDirs(vanilla)
+  const dataDirs = [...new Set(analysis.files.filter(f => isUserData(f.rel, dirs)).map(f => f.rel.split('/')[0] + '/'))]
+  if (dataDirs.length) {
+    notes.push(`Your settings and progress in ${dataDirs.join(', ')} are kept when you turn it off or update it.`)
+  }
+  if (analysis.skipped.length) {
+    notes.push(`Skipped ${analysis.skipped.join(', ')}: it comes with EDFModLoader, which the ModKit installs and updates.`)
+  }
+  if (analysis.ignored.length) {
+    notes.push(`Ignored ${analysis.ignored.length} file(s) outside the Mods folder: ${analysis.ignored.slice(0, 3).join(', ')}`)
+  }
+  return { installed: [id], notes }
+}
+
 // Installs the zip. If it's an old-style mod with several variants and none was picked, returns
 // { variants } so the user can choose and call again with `variant`.
 function installZip(buffer, { zipName = 'mod.zip', modsDir, vanilla, variant } = {}) {
@@ -180,6 +243,7 @@ function installZip(buffer, { zipName = 'mod.zip', modsDir, vanilla, variant } =
     }
     return { installed, notes: [] }
   }
+  if (analysis.kind === 'plugin') return installPlugin(analysis, { zipName, modsDir, vanilla })
 
   const labels = [...analysis.groups.keys()]
   let label
@@ -214,16 +278,8 @@ function installZip(buffer, { zipName = 'mod.zip', modsDir, vanilla, variant } =
     return { installed, notes: [...notes, ...ignoredNote] }
   }
 
-  // Build a folder with the game's structure and import it like any old-style mod.
-  const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'edfmk-zip-'))
-  try {
-    writeFiles(staging, files)
-    const id = uniqueId(modsDir, slug(name))
-    const result = importFolder(staging, path.join(modsDir, id), { vanilla, id, name, source })
-    return { installed: [id], notes: [...result.notes, ...ignoredNote] }
-  } finally {
-    fs.rmSync(staging, { recursive: true, force: true })
-  }
+  const { id, notes } = importFiles(files, { modsDir, vanilla, name, source })
+  return { installed: [id], notes: [...notes, ...ignoredNote] }
 }
 
 module.exports = { analyzeZip, installZip, locate, slug, cleanZipName }
