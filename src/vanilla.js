@@ -59,6 +59,23 @@ function vanillaProvider({ vanillaDir, gameDir }) {
     return dirs
   }
 
+  // Extensiones que usa el juego en cada carpeta de primer nivel, en mayúsculas:
+  // Map('WEAPON' -> Set('.SGO', '.DDS', ...)). Por carpeta porque, por ejemplo, hay .JSON en
+  // MISSION pero no en DEFAULTPACKAGE.
+  function extensions() {
+    const exts = new Map()
+    const add = k => {
+      const m = /\.[^./]+$/.exec(k)
+      if (!m || !k.includes('/')) return
+      const top = k.split('/')[0]
+      if (!exts.has(top)) exts.set(top, new Set())
+      exts.get(top).add(m[0])
+    }
+    for (const k of local.keys()) add(k)
+    for (const { index } of loadArchives()) for (const k of index.keys()) add(k)
+    return exts
+  }
+
   // Nombre real del archivo en el juego, sin extraerlo.
   function relOf(key) {
     if (local.has(key)) return local.get(key).rel
@@ -66,7 +83,7 @@ function vanillaProvider({ vanillaDir, gameDir }) {
     return undefined
   }
 
-  return { get, relOf, topDirs, archives: () => loadArchives() }
+  return { get, relOf, topDirs, extensions, archives: () => loadArchives() }
 }
 
 module.exports = { vanillaProvider, cpkFiles }

@@ -8,7 +8,13 @@ de pisarse.
 
 1. Bajá `EDF6-ModKit.exe` de [Releases](https://github.com/fran2708/EDF6-ModKit/releases).
 2. Ponelo en la carpeta del juego, al lado de `EDF6.exe`.
-3. Abrilo con doble clic. La primera vez crea la carpeta `ModKit\` con todo lo necesario.
+3. Abrilo con doble clic. La primera vez crea la carpeta `ModKit\` con todo lo necesario, y se abre
+   el ModKit en el navegador.
+4. Soltá el `.zip` de un mod en la página (sirven los mods de Nexus que reemplazan archivos; si el
+   zip trae varias versiones, te pregunta cuál). Tildá los mods que querés, ordenalos y apretá
+   **Aplicar**. Para volver al juego sin mods: **Restaurar original**.
+
+La ventana negra que queda abierta es el ModKit funcionando; cerrala cuando termines.
 
 Los archivos originales del juego se sacan solos de `Root.cpk` cuando hacen falta; no hay que
 extraer nada a mano. Tu carpeta `Mods\` actual se respeta: lo que el ModKit pise queda respaldado y
@@ -85,6 +91,7 @@ tampoco puede estar adentro de `Mods\`: EDFModLoader la cargaría como un mod.
 
 ```bash
 cd "D:/Juegos/EARTH DEFENSE FORCE 6/ModKit"     # se crea solo con el exe o con "edfmk"
+edfmk ui                                         # la misma interfaz que abre el exe
 edfmk import "ruta/a/un/mod/viejo" more-slots   # convierte un mod de archivos completos
 edfmk list
 edfmk build --dry-run                            # muestra qué haría y los conflictos
@@ -179,7 +186,8 @@ Pendiente:
 
 - Parchear los `.txt` de Patcher.dll y los scripts `.AS`.
 - Selectores por contenido en las rutas (p. ej. "el arma cuyo id es X") para no depender de índices.
-- Una interfaz en el navegador para activar mods, ordenarlos y agregar zips (en camino).
+- Importar mods en `.7z` y `.rar` (hoy solo `.zip`).
+- Firmar el exe para que Windows no lo marque como desconocido.
 
 ## Desarrollo
 

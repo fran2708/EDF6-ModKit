@@ -1,7 +1,7 @@
 // Arma dist/EDF6-ModKit.exe: un solo archivo que no necesita Node instalado.
 //
 //   1. esbuild junta bin/edfmk.js, src/ y lo que usa de sgott en dist/edfmk.bundle.js
-//   2. Node SEA convierte ese JS en un blob (sea-config.json)
+//   2. Node SEA convierte ese JS (y ui/index.html como asset) en un blob
 //   3. postject inyecta el blob en una copia de node.exe
 //
 // Uso: npm run build:exe
@@ -33,7 +33,6 @@ async function main() {
     target: 'node20',
     format: 'cjs',
     outfile: BUNDLE,
-    loader: { '.html': 'text' },
     logLevel: 'warning',
   })
 
@@ -43,6 +42,7 @@ async function main() {
     output: BLOB,
     disableExperimentalSEAWarning: true,
     useCodeCache: false,
+    assets: { 'index.html': path.join(ROOT, 'ui', 'index.html') },
   }))
   execFileSync(process.execPath, ['--experimental-sea-config', path.join(DIST, 'sea-config.json')], { stdio: 'inherit' })
 

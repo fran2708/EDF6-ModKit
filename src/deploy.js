@@ -109,6 +109,17 @@ function deploy(outDir, outputs, { dryRun = false } = {}) {
   return log
 }
 
+// Cuántos archivos cambiarían si se hiciera deploy ahora (0 = Mods/ ya está al día).
+function pendingChanges(outDir, outputs) {
+  const old = readManifest(outDir)
+  let count = 0
+  for (const out of outputs.values()) {
+    if (hashOf(path.join(outDir, out.rel)) !== sha1(out.buffer)) count++
+  }
+  for (const key of Object.keys(old.files)) if (!outputs.has(key)) count++
+  return count
+}
+
 function clean(outDir) {
   const log = []
   const old = readManifest(outDir)
@@ -117,4 +128,4 @@ function clean(outDir) {
   return log
 }
 
-module.exports = { deploy, clean, readManifest }
+module.exports = { deploy, clean, readManifest, pendingChanges }

@@ -11,12 +11,15 @@ const { leaves } = require('../src/path')
 const { importFolder } = require('../src/importer')
 const { ensureWorkspace, isPackaged, vanillaFor } = require('../src/workspace')
 const { fileKey } = require('../src/mods')
+const { startServer, openBrowser } = require('../src/server')
 const pkg = require('../package.json')
 
 const HELP = `edfmk ${pkg.version} — framework de mods para EDF6
 
 Uso:
-  edfmk                              (o doble clic en el .exe) prepara todo y muestra el estado
+  edfmk                              (o doble clic en el .exe) prepara todo y abre la interfaz
+  edfmk ui [--no-browser] [--port N] abre la interfaz en el navegador
+  edfmk status                       carpeta del juego y cantidad de mods
   edfmk init [carpeta del juego]     crea modkit.json, mods/ y vanilla/ (en la carpeta del juego,
                                      los crea en ModKit/ para no mezclarlos con Mods/)
   edfmk list                         mods encontrados y orden de carga
@@ -39,6 +42,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--config') opts.config = argv[++i]
+    else if (a === '--port') opts.port = argv[++i]
     else if (a.startsWith('--')) opts[a.slice(2)] = true
     else args.push(a)
   }
@@ -122,6 +126,16 @@ const commands = {
     }
   },
 
+  async ui(args, opts) {
+    const cfg = workspace(opts)
+    const port = opts.port ? Number(opts.port) : 0
+    const { url } = await startServer({ configFile: cfg.file, port })
+    console.log(`EDF6 ModKit abierto en el navegador.\n${url}\n`)
+    console.log('Si no se abrió solo, copiá esa dirección en el navegador.')
+    console.log('Cerrá esta ventana para salir del ModKit.')
+    if (!opts['no-browser']) openBrowser(url)
+  },
+
   status(args, opts) {
     const cfg = workspace(opts)
     const all = loadMods(cfg.modsDir)
@@ -178,25 +192,26 @@ function main() {
     process.exitCode = 1
     return
   }
-  try {
-    fn(args, opts)
-  } catch (e) {
-    console.error(`error: ${e.message}`)
-    process.exitCode = 1
-  }
+  Promise.resolve()
+    .then(() => fn(args, opts))
+    .catch(e => {
+      console.error(`error: ${e.message}`)
+      process.exitCode = 1
+    })
 }
 
-function interactive(opts) {
+// Doble clic: abre la interfaz. Si algo falla, la ventana espera un Enter para que se pueda leer
+// el error antes de que se cierre.
+async function interactive(opts) {
   try {
-    commands.status([], opts)
+    await commands.ui([], opts)
   } catch (e) {
     console.error(`error: ${e.message}`)
     process.exitCode = 1
-  }
-  // Abierto con doble clic: que la ventana no se cierre antes de poder leerla.
-  if (isPackaged()) {
-    console.log('\nApretá Enter para salir.')
-    process.stdin.once('data', () => process.exit())
+    if (isPackaged()) {
+      console.log('\nApretá Enter para salir.')
+      process.stdin.once('data', () => process.exit())
+    }
   }
 }
 

@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EDF6 ModKit</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ffffff; --text: #1b1f24; --muted: #5d6673; --line: #dde1e6;
+    --accent: #2f6fdf; --accent-text: #ffffff; --ok: #1f8a4c; --warn: #b26a00; --err: #c62f2f;
+    --warn-bg: #fff4e0; --err-bg: #fdeaea; --ok-bg: #e6f5ec; --drop: #eef3fd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171b; --panel: #1d2127; --text: #e6e9ed; --muted: #9aa3ae; --line: #2e343c;
+      --accent: #5b93f5; --accent-text: #0d1117; --ok: #4cc07f; --warn: #f0a93b; --err: #f06a6a;
+      --warn-bg: #2d2415; --err-bg: #301a1a; --ok-bg: #16291e; --drop: #1b2535;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 22px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .muted { color: var(--muted); font-size: 13px; }
+  #game { overflow-wrap: anywhere; }
+  @media (max-width: 560px) {
+    .status .actions { width: 100%; }
+    .status .actions button { flex: 1; }
+    ul.mods li { grid-template-columns: 14px 22px 20px minmax(0, 1fr); }
+    .btns { grid-column: 1 / -1; justify-self: end; }
+    .info .desc { white-space: normal; }
+  }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-top: 16px; }
+  .status { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .badge { padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .badge.err { background: var(--err-bg); color: var(--err); }
+  button { font: inherit; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text); padding: 8px 14px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button.icon { padding: 4px 8px; font-size: 13px; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  ul.mods { list-style: none; margin: 0; padding: 0; }
+  ul.mods li { display: grid; grid-template-columns: 14px 22px 20px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 8px; border-top: 1px solid var(--line); }
+  ul.mods li.empty { display: block; }
+  .btns { display: flex; gap: 6px; }
+  ul.mods li:first-child { border-top: 0; }
+  ul.mods li.dragging { opacity: .4; }
+  ul.mods li.over { box-shadow: inset 0 2px 0 var(--accent); }
+  .handle { cursor: grab; color: var(--muted); user-select: none; padding: 0 2px; }
+  .pos { width: 22px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .info { flex: 1; min-width: 0; }
+  .info .name { font-weight: 600; }
+  .info .desc { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
+  .empty { color: var(--muted); padding: 8px; }
+  .issues { list-style: none; margin: 0; padding: 0; }
+  .issues li { padding: 8px 10px; border-radius: 6px; margin-top: 6px; font-size: 14px; }
+  .issues li.conflict { background: var(--warn-bg); }
+  .issues li.error { background: var(--err-bg); }
+  .issues li .where { display: block; color: var(--muted); font-size: 12px; font-family: Consolas, monospace; }
+  .drop { display: block; border: 2px dashed var(--line); border-radius: 10px; padding: 22px; text-align: center; color: var(--muted); cursor: pointer; background: var(--panel); margin-top: 16px; }
+  .drop.hover { border-color: var(--accent); background: var(--drop); color: var(--text); }
+  pre.log { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px; font-size: 12px; max-height: 220px; overflow: auto; white-space: pre-wrap; margin: 10px 0 0; }
+  dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text); max-width: 520px; width: calc(100% - 32px); }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog label { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border-radius: 6px; cursor: pointer; }
+  dialog label:hover { background: var(--bg); }
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 14px; max-width: calc(100% - 32px); display: none; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>EDF6 ModKit</h1>
+    <span class="muted" id="game"></span>
+  </header>
+
+  <section class="panel status">
+    <span id="badge" class="badge">Cargando…</span>
+    <div class="actions">
+      <button id="restore">Restaurar original</button>
+      <button id="apply" class="primary">Aplicar</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Mods</h2>
+    <p class="muted" style="margin:-4px 0 8px">Tildá los que querés usar. Arrastralos para cambiar el orden: si dos mods chocan, gana el de más abajo.</p>
+    <ul class="mods" id="mods"></ul>
+  </section>
+
+  <label class="drop" id="drop">
+    <input type="file" id="file" accept=".zip" hidden>
+    <strong>Soltá acá el .zip de un mod</strong> o hacé clic para elegirlo.<br>
+    <span class="muted">Sirven los mods de Nexus que reemplazan archivos: se convierten solos para que se combinen.</span>
+  </label>
+
+  <section class="panel" id="issuesPanel" hidden>
+    <h2>Avisos</h2>
+    <ul class="issues" id="issues"></ul>
+  </section>
+
+  <section class="panel" id="logPanel" hidden>
+    <h2>Último cambio</h2>
+    <pre class="log" id="log"></pre>
+  </section>
+</main>
+
+<dialog id="variants">
+  <form method="dialog">
+    <h2 style="margin-top:0">Este mod trae varias versiones</h2>
+    <p class="muted">Elegí cuál querés instalar.</p>
+    <div id="variantList"></div>
+    <div class="actions" style="justify-content:flex-end;margin-top:12px">
+      <button value="cancel">Cancelar</button>
+      <button value="ok" class="primary">Instalar</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const token = new URLSearchParams(location.search).get('t')
+let state = null
+let busy = false
+
+const $ = id => document.getElementById(id)
+
+async function api(method, url, body, raw) {
+  const res = await fetch(url, {
+    method,
+    headers: raw ? { 'x-token': token } : { 'x-token': token, 'content-type': 'application/json' },
+    body: raw ? body : body && JSON.stringify(body),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Error')
+  return data
+}
+
+function toast(text) {
+  const t = $('toast')
+  t.textContent = text
+  t.style.display = 'block'
+  clearTimeout(toast.timer)
+  toast.timer = setTimeout(() => (t.style.display = 'none'), 4000)
+}
+
+async function run(fn) {
+  if (busy) return
+  busy = true
+  document.body.style.cursor = 'progress'
+  try {
+    await fn()
+  } catch (e) {
+    toast(e.message)
+  } finally {
+    busy = false
+    document.body.style.cursor = ''
+    render()
+  }
+}
+
+function nameOf(id) {
+  return state.mods.find(m => m.id === id)?.name || id
+}
+
+// Los mensajes del build usan ids entre comillas; se muestran con el nombre del mod.
+function humanize(text) {
+  return text.replace(/"([^"]+)"/g, (all, id) => (state.mods.some(m => m.id === id) ? `«${nameOf(id)}»` : all))
+}
+
+function render() {
+  if (!state) return
+  $('game').textContent = state.gameDir
+  const p = state.preview
+  const badge = $('badge')
+  if (p.errors.length) {
+    badge.className = 'badge err'
+    badge.textContent = `No se puede aplicar: ${p.errors.length} error(es)`
+  } else if (p.pending) {
+    badge.className = 'badge warn'
+    badge.textContent = `Hay cambios sin aplicar (${p.pending} archivo${p.pending === 1 ? '' : 's'})`
+  } else {
+    badge.className = 'badge ok'
+    badge.textContent = state.load.length ? 'Todo aplicado: listo para jugar' : 'Sin mods activos'
+  }
+  $('apply').disabled = busy || !!p.errors.length || !p.pending
+  $('restore').disabled = busy
+
+  // Activos en su orden, después los inactivos por nombre.
+  const active = state.load.map(id => state.mods.find(m => m.id === id)).filter(Boolean)
+  const inactive = state.mods.filter(m => !state.load.includes(m.id)).sort((a, b) => a.name.localeCompare(b.name))
+  const list = $('mods')
+  list.innerHTML = ''
+  if (!state.mods.length) list.innerHTML = '<li class="empty">Todavía no hay mods. Soltá un .zip abajo para agregar uno.</li>'
+  for (const m of [...active, ...inactive]) {
+    const on = state.load.includes(m.id)
+    const li = document.createElement('li')
+    li.dataset.id = m.id
+    li.draggable = on
+    li.innerHTML = `
+      <span class="handle" title="Arrastrar">${on ? '⋮⋮' : ''}</span>
+      <span class="pos">${on ? state.load.indexOf(m.id) + 1 : ''}</span>
+      <input type="checkbox" ${on ? 'checked' : ''} aria-label="Activar">
+      <div class="info">
+        <div class="name"></div>
+        <div class="desc"></div>
+      </div>
+      <span class="btns">
+        ${on ? '<button class="icon up" title="Subir">▲</button><button class="icon down" title="Bajar">▼</button>' : ''}
+        <button class="icon del" title="Quitar el mod">✕</button>
+      </span>`
+    li.querySelector('.name').textContent = `${m.name}${m.version ? ' ' + m.version : ''}`
+    li.querySelector('.desc').textContent = m.description || `${m.operations} cambio(s), ${m.files} archivo(s)`
+    li.querySelector('input').onchange = e => setLoad(e.target.checked ? [...state.load, m.id] : state.load.filter(x => x !== m.id))
+    li.querySelector('.del').onclick = () => {
+      if (confirm(`¿Quitar «${m.name}»? Se borra de la carpeta ModKit/mods.`)) run(async () => (state = await api('POST', '/api/remove', { id: m.id })))
+    }
+    if (on) {
+      li.querySelector('.up').onclick = () => move(m.id, -1)
+      li.querySelector('.down').onclick = () => move(m.id, 1)
+    }
+    list.appendChild(li)
+  }
+  wireDrag()
+
+  const items = [
+    ...p.errors.map(e => ({ cls: 'error', text: `«${nameOf(e.mod)}»: ${e.message}`, where: e.file })),
+    ...p.conflicts.map(c => ({ cls: 'conflict', text: humanize(c.message), where: c.file + (c.path ? ` → ${c.path}` : '') })),
+    ...p.notes.map(n => ({ cls: 'conflict', text: humanize(n), where: '' })),
+  ]
+  $('issuesPanel').hidden = !items.length
+  const issues = $('issues')
+  issues.innerHTML = ''
+  for (const it of items) {
+    const li = document.createElement('li')
+    li.className = it.cls
+    li.textContent = it.text
+    if (it.where) {
+      const w = document.createElement('span')
+      w.className = 'where'
+      w.textContent = it.where
+      li.appendChild(w)
+    }
+    issues.appendChild(li)
+  }
+}
+
+function setLoad(load) {
+  run(async () => (state = await api('POST', '/api/load', { load })))
+}
+
+function move(id, delta) {
+  const load = [...state.load]
+  const i = load.indexOf(id)
+  const j = i + delta
+  if (j < 0 || j >= load.length) return
+  ;[load[i], load[j]] = [load[j], load[i]]
+  setLoad(load)
+}
+
+function wireDrag() {
+  let dragged = null
+  for (const li of $('mods').querySelectorAll('li[draggable=true]')) {
+    li.ondragstart = e => { dragged = li.dataset.id; li.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move' }
+    li.ondragend = () => li.classList.remove('dragging')
+    li.ondragover = e => { if (dragged) { e.preventDefault(); li.classList.add('over') } }
+    li.ondragleave = () => li.classList.remove('over')
+    li.ondrop = e => {
+      e.preventDefault()
+      li.classList.remove('over')
+      const target = li.dataset.id
+      if (!dragged || dragged === target) return
+      const load = state.load.filter(x => x !== dragged)
+      load.splice(load.indexOf(target), 0, dragged)
+      dragged = null
+      setLoad(load)
+    }
+  }
+}
+
+function showLog(title, lines) {
+  $('logPanel').hidden = false
+  $('log').textContent = [title, ...lines].join('\n')
+}
+
+$('apply').onclick = () => run(async () => {
+  const r = await api('POST', '/api/apply')
+  state = r.state
+  showLog(r.ok ? 'Aplicado. Ya podés abrir el juego.' : 'No se aplicó: revisá los avisos.', r.log)
+  if (r.ok) toast('Listo: cambios aplicados')
+})
+
+$('restore').onclick = () => {
+  if (!confirm('¿Quitar todo lo que aplicó el ModKit y dejar la carpeta Mods como estaba antes?')) return
+  run(async () => {
+    const r = await api('POST', '/api/restore')
+    state = r.state
+    showLog('Restaurado.', r.log)
+  })
+}
+
+async function importZip(file) {
+  if (!/\.zip$/i.test(file.name)) return toast('Tiene que ser un archivo .zip')
+  await run(async () => {
+    const buffer = await file.arrayBuffer()
+    let r = await api('POST', '/api/import?name=' + encodeURIComponent(file.name), buffer, true)
+    if (r.variants) {
+      const variant = await chooseVariant(r.variants)
+      if (variant === null) return
+      r = await api('POST', '/api/import/choose', { importId: r.importId, variant })
+    }
+    state = r.state
+    showLog(`Instalado: ${r.installed.map(nameOf).join(', ')}. Tildalo en la lista para activarlo.`, r.notes)
+  })
+}
+
+function chooseVariant(variants) {
+  return new Promise(resolve => {
+    const list = $('variantList')
+    list.innerHTML = ''
+    variants.forEach((v, i) => {
+      const label = document.createElement('label')
+      label.innerHTML = `<input type="radio" name="variant" ${i === 0 ? 'checked' : ''}><span><strong></strong><br><span class="muted"></span></span>`
+      label.querySelector('input').value = v.label
+      label.querySelector('strong').textContent = v.name
+      label.querySelector('.muted').textContent = v.files.join(', ')
+      list.appendChild(label)
+    })
+    const dlg = $('variants')
+    dlg.onclose = () => {
+      const picked = list.querySelector('input:checked')
+      resolve(dlg.returnValue === 'ok' && picked ? picked.value : null)
+    }
+    dlg.returnValue = ''
+    dlg.showModal()
+  })
+}
+
+const drop = $('drop')
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('hover') }
+drop.ondragleave = () => drop.classList.remove('hover')
+drop.ondrop = e => {
+  e.preventDefault()
+  drop.classList.remove('hover')
+  const file = e.dataTransfer.files[0]
+  if (file) importZip(file)
+}
+$('file').onchange = e => {
+  const file = e.target.files[0]
+  e.target.value = ''
+  if (file) importZip(file)
+}
+
+run(async () => (state = await api('GET', '/api/state')))
+</script>
+</body>
+</html>

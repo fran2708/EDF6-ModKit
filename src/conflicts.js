@@ -61,7 +61,7 @@ function analyze(events) {
           } else if (e.path === later.path && e.kind === 'scale') {
             conflicts.push({
               file, path: later.path, mods: [e.mod, later.mod],
-              message: `"${later.mod}" pisa con set el escalado (mul/add) de "${e.mod}"`,
+              message: `"${later.mod}" fija un valor que "${e.mod}" multiplica o suma; se pierde el escalado de "${e.mod}"`,
             })
           } else if (e.path === later.path && (e.kind === 'append' || e.kind === 'reshape')) {
             conflicts.push({

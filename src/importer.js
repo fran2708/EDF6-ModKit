@@ -8,7 +8,7 @@ const codec = require('./codec')
 const { diff } = require('./diff')
 const { fileKey, listFiles, indexDir } = require('./mods')
 
-function importFolder(srcDir, destDir, { vanilla, vanillaDir, id, name } = {}) {
+function importFolder(srcDir, destDir, { vanilla, vanillaDir, id, name, source } = {}) {
   vanilla = vanilla || (vanillaDir ? indexDir(vanillaDir) : new Map())
   const patches = {}
   const copied = []
@@ -40,7 +40,7 @@ function importFolder(srcDir, destDir, { vanilla, vanillaDir, id, name } = {}) {
     name: name || id || path.basename(srcDir),
     version: '1.0.0',
     author: '',
-    description: `Importado de ${path.basename(srcDir)}`,
+    description: `Importado de ${source || path.basename(srcDir)}`,
     patches,
   }
   fs.mkdirSync(destDir, { recursive: true })
