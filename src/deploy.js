@@ -7,12 +7,21 @@
 // On the next build or clean, files no mod produces anymore are deleted and, if there was a
 // backup, it is restored. If someone edited a ModKit file by hand, it is backed up before
 // being overwritten.
+//
+// Files that were in Mods/ before the ModKit and got imported as a mod (importInstalled) are
+// "adopted" by that mod (the entry's `adopted` is its id): they stay backed up so clean brings
+// them back, but disabling the imported mod deletes them instead of restoring the backup, since
+// the mod now lives in the ModKit. They stay adopted after a clean too, so the restored files
+// aren't offered for import a second time.
 
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
+const { fileKey, listFiles } = require('./mods')
 
 const STATE_DIR = '.modkit'
+// Folders of Mods/ that belong to the ModKit or to EDFModLoader/Patcher rather than to a mod.
+const RESERVED = /^(\.modkit|Plugins|Patches|ExtraPatches)(\/|$)/i
 
 function sha1(buffer) {
   return crypto.createHash('sha1').update(buffer).digest('hex')
@@ -66,6 +75,47 @@ function restoreOrDelete(outDir, rel, entry, log) {
   }
 }
 
+// An adopted file whose mod is no longer active: delete it but keep the backup for clean.
+// Returns its new manifest entry, or null if it was edited by hand and is no longer ours.
+function removeAdopted(outDir, entry, log) {
+  const target = path.join(outDir, entry.rel)
+  const current = hashOf(target)
+  if (current && current !== entry.sha1) {
+    log.push(`left ${entry.rel} alone: it was edited by hand after the last build`)
+    return null
+  }
+  if (current) {
+    fs.unlinkSync(target)
+    log.push(`deleted ${entry.rel}`)
+  }
+  return { rel: entry.rel, sha1: null, mods: [], adopted: entry.adopted }
+}
+
+// Clean for an adopted file: puts the original back but keeps the backup and the entry, since
+// the file still belongs to the mod it was imported into. Returns the new entry, or null.
+function restoreAdopted(outDir, entry, log) {
+  const target = path.join(outDir, entry.rel)
+  const current = hashOf(target)
+  if (current && current !== entry.sha1) {
+    log.push(`left ${entry.rel} alone: it was edited by hand after the last build`)
+    return null
+  }
+  const backup = path.join(statePaths(outDir).backup, entry.rel)
+  if (!fs.existsSync(backup)) {
+    if (current) fs.unlinkSync(target)
+    return null
+  }
+  fs.mkdirSync(path.dirname(target), { recursive: true })
+  fs.copyFileSync(backup, target)
+  log.push(`restored ${entry.rel}`)
+  return { rel: entry.rel, sha1: hashOf(target), mods: [], adopted: entry.adopted }
+}
+
+// Nothing to do for an adopted file that is already gone.
+function isSettled(outDir, entry) {
+  return entry.adopted && !fs.existsSync(path.join(outDir, entry.rel))
+}
+
 // outputs: Map key -> { rel, buffer, mods }
 function deploy(outDir, outputs, { dryRun = false } = {}) {
   const log = []
@@ -73,9 +123,14 @@ function deploy(outDir, outputs, { dryRun = false } = {}) {
   const next = { files: {} }
 
   for (const [key, entry] of Object.entries(old.files)) {
-    if (!outputs.has(key)) {
-      if (dryRun) log.push(`would remove ${entry.rel}`)
-      else restoreOrDelete(outDir, entry.rel, entry, log)
+    if (outputs.has(key)) continue
+    if (dryRun) {
+      if (!isSettled(outDir, entry)) log.push(`would remove ${entry.rel}`)
+    } else if (entry.adopted) {
+      const kept = removeAdopted(outDir, entry, log)
+      if (kept) next.files[key] = kept
+    } else {
+      restoreOrDelete(outDir, entry.rel, entry, log)
     }
   }
 
@@ -95,13 +150,10 @@ function deploy(outDir, outputs, { dryRun = false } = {}) {
     else if (current && current !== hash && current !== prev.sha1) {
       backupFile(outDir, out.rel, log, `.edited-${Date.now()}`)
     }
-    if (current === hash) {
-      next.files[key] = { rel: out.rel, sha1: hash, mods: out.mods }
-      continue
-    }
+    next.files[key] = { rel: out.rel, sha1: hash, mods: out.mods, ...(prev?.adopted && { adopted: prev.adopted }) }
+    if (current === hash) continue
     fs.mkdirSync(path.dirname(target), { recursive: true })
     fs.writeFileSync(target, out.buffer)
-    next.files[key] = { rel: out.rel, sha1: hash, mods: out.mods }
     log.push(`wrote ${out.rel} (${out.mods.join(', ')})`)
   }
 
@@ -116,16 +168,63 @@ function pendingChanges(outDir, outputs) {
   for (const out of outputs.values()) {
     if (hashOf(path.join(outDir, out.rel)) !== sha1(out.buffer)) count++
   }
-  for (const key of Object.keys(old.files)) if (!outputs.has(key)) count++
+  for (const [key, entry] of Object.entries(old.files)) {
+    if (!outputs.has(key) && !isSettled(outDir, entry)) count++
+  }
   return count
+}
+
+// Files in Mods/ the ModKit didn't write (mods installed by hand), as rel paths.
+// modIds: the mods that exist; a file adopted by a mod that has since been deleted counts as
+// installed by hand again once it's back to the original (not while it holds a build result).
+function unmanagedFiles(outDir, modIds) {
+  if (!outDir) return []
+  const managed = readManifest(outDir).files
+  const { backup } = statePaths(outDir)
+  const orphan = entry => modIds && entry.adopted && !modIds.has(entry.adopted) &&
+    hashOf(path.join(outDir, entry.rel)) === hashOf(path.join(backup, entry.rel))
+  return listFiles(outDir).filter(rel => {
+    const entry = managed[fileKey(rel)]
+    return !RESERVED.test(rel) && (!entry || orphan(entry))
+  })
+}
+
+// Warnings for files installed by hand that deploying `outputs` would replace.
+function displacedNotes(outDir, outputs, modIds) {
+  return unmanagedFiles(outDir, modIds)
+    .filter(rel => outputs.has(fileKey(rel)))
+    .map(rel => `${rel} was installed by hand and applying will replace it; import it as a mod to keep it`)
+}
+
+// Hands files installed by hand over to the ModKit once they have been imported as mod `id`.
+function adopt(outDir, rels, id) {
+  const data = readManifest(outDir)
+  const { backup } = statePaths(outDir)
+  for (const rel of rels) {
+    const src = path.join(outDir, rel)
+    // Overwrites a leftover backup: what's in Mods/ now is what clean has to bring back.
+    const dst = path.join(backup, rel)
+    fs.mkdirSync(path.dirname(dst), { recursive: true })
+    fs.copyFileSync(src, dst)
+    data.files[fileKey(rel)] = { rel, sha1: hashOf(src), mods: [], adopted: id }
+  }
+  writeManifest(outDir, data)
 }
 
 function clean(outDir) {
   const log = []
   const old = readManifest(outDir)
-  for (const entry of Object.values(old.files)) restoreOrDelete(outDir, entry.rel, entry, log)
-  writeManifest(outDir, { files: {} })
+  const next = { files: {} }
+  for (const [key, entry] of Object.entries(old.files)) {
+    if (entry.adopted) {
+      const kept = restoreAdopted(outDir, entry, log)
+      if (kept) next.files[key] = kept
+    } else {
+      restoreOrDelete(outDir, entry.rel, entry, log)
+    }
+  }
+  writeManifest(outDir, next)
   return log
 }
 
-module.exports = { deploy, clean, readManifest, pendingChanges }
+module.exports = { deploy, clean, readManifest, pendingChanges, unmanagedFiles, displacedNotes, adopt }

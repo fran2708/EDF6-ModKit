@@ -160,3 +160,26 @@ test('API: importing a zip with variants', async () => {
     await srv.close()
   }
 })
+
+test('API: importing the mods installed by hand in Mods/', async () => {
+  const { configFile, game } = setup()
+  write(path.join(game, 'Mods', CONFIG), variantDoc('By hand'))
+  const srv = await startServer({ configFile })
+  const base = srv.url.split('?')[0]
+  const post = url => fetch(base + url, { method: 'POST', headers: { 'x-token': srv.token } }).then(r => r.json())
+  try {
+    let state = await fetch(base + 'api/state', { headers: { 'x-token': srv.token } }).then(r => r.json())
+    assert.deepEqual(state.unmanaged, [CONFIG])
+    const data = await post('api/import-installed')
+    assert.deepEqual(data.installed, ['previously-installed'])
+    assert.deepEqual(data.state.load, ['previously-installed'])
+    assert.deepEqual(data.state.unmanaged, [])
+    state = (await post('api/apply')).state
+    assert.equal(state.preview.pending, 0)
+    const doc = codec.decode(fs.readFileSync(path.join(game, 'Mods', CONFIG)))
+    assert.equal(doc.variables[2].value, 'By hand')
+    assert.match((await post('api/import-installed')).error, /nothing installed by hand/)
+  } finally {
+    await srv.close()
+  }
+})

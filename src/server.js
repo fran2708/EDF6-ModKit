@@ -9,7 +9,8 @@ const { execFile } = require('child_process')
 const config = require('./config')
 const { loadMods } = require('./mods')
 const { build } = require('./build')
-const { deploy, clean, pendingChanges } = require('./deploy')
+const { deploy, clean, pendingChanges, unmanagedFiles, displacedNotes } = require('./deploy')
+const { importInstalled } = require('./importer')
 const { installZip } = require('./zipimport')
 const { checkPatches } = require('./patcher')
 const { isPackaged, vanillaFor } = require('./workspace')
@@ -54,11 +55,12 @@ function createApp(configFile, { loader } = {}) {
   }
 
   function preview(c = cfg()) {
-    const { active } = modsOf(c)
+    const { all, active } = modsOf(c)
     const result = build(active, { vanilla: vanillaFor(c) })
     const patches = checkPatches(result.outputs, c.outDir)
     result.conflicts.push(...patches.conflicts)
     result.notes.push(...patches.notes)
+    result.notes.push(...displacedNotes(c.outDir, result.outputs, new Set(all.map(m => m.id))))
     return {
       result,
       summary: {
@@ -87,6 +89,7 @@ function createApp(configFile, { loader } = {}) {
         operations: Object.values(m.patches).reduce((n, ops) => n + ops.length, 0),
         files: m.files.length,
       })),
+      unmanaged: unmanagedFiles(c.outDir, new Set(all.map(m => m.id))),
       preview: preview(c).summary,
     }
   }
@@ -115,6 +118,18 @@ function createApp(configFile, { loader } = {}) {
     'POST /api/restore': () => {
       const log = clean(cfg().outDir)
       return { ok: true, log, state: state() }
+    },
+
+    // Imports what was installed by hand in Mods/ as one mod, enabled first in the load order so
+    // the ModKit's own mods win where they clash.
+    'POST /api/import-installed': () => {
+      const c = cfg()
+      if (!c.outDir) throw new Error('"gameDir" is missing in modkit.json')
+      const r = importInstalled({ outDir: c.outDir, modsDir: c.modsDir, vanilla: vanillaFor(c) })
+      if (!r) throw new Error('There is nothing installed by hand in the Mods folder')
+      c.raw.load = [r.id, ...(c.raw.load || [])]
+      config.save(c)
+      return { installed: [r.id], notes: r.notes, state: state() }
     },
 
     'POST /api/import': async (body, url) => {

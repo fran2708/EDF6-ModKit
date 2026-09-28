@@ -88,4 +88,11 @@ function indexDir(dir) {
   return index
 }
 
-module.exports = { fileKey, listFiles, loadMod, loadMods, indexDir }
+// base, or base-2, base-3... whichever isn't taken in modsDir yet.
+function uniqueId(modsDir, base) {
+  let id = base
+  for (let i = 2; fs.existsSync(path.join(modsDir, id)); i++) id = `${base}-${i}`
+  return id
+}
+
+module.exports = { fileKey, listFiles, loadMod, loadMods, indexDir, uniqueId }

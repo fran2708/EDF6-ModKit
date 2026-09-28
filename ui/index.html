@@ -90,6 +90,11 @@
     <button id="loaderBtn" class="primary" hidden></button>
   </section>
 
+  <section class="panel loader warn" id="installedPanel" hidden>
+    <span id="installedText"></span>
+    <button id="installedBtn" class="primary">Import as a mod</button>
+  </section>
+
   <section class="panel status">
     <span id="badge" class="badge">Loading…</span>
     <div class="actions">
@@ -205,6 +210,12 @@ function render() {
       badge.textContent = 'Applied, but the game won’t load mods until EDFModLoader is installed'
     }
   }
+  const n = state.unmanaged.length
+  $('installedPanel').hidden = !n
+  $('installedText').textContent = `Your Mods folder has ${n} file${n === 1 ? '' : 's'} installed by hand. ` +
+    'Import them as a mod so they combine with the rest instead of being replaced.'
+  $('installedBtn').disabled = busy
+
   $('apply').disabled = busy || !!p.errors.length || !p.pending
   $('restore').disabled = busy
 
@@ -320,6 +331,12 @@ $('restore').onclick = () => {
     showLog('Restored.', r.log)
   })
 }
+
+$('installedBtn').onclick = () => run(async () => {
+  const r = await api('POST', '/api/import-installed')
+  state = r.state
+  showLog(`Imported them as “${nameOf(r.installed[0])}” and enabled it. Press Apply to combine it with your other mods.`, r.notes)
+})
 
 async function importZip(file) {
   if (!/\.zip$/i.test(file.name)) return toast('It has to be a .zip file')

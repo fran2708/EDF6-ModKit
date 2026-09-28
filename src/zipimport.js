@@ -12,7 +12,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { unzipSync } = require('fflate')
-const { fileKey } = require('./mods')
+const { fileKey, uniqueId } = require('./mods')
 const { importFolder } = require('./importer')
 const { looksLikePatch, patchInfo } = require('./patcher')
 
@@ -114,12 +114,6 @@ function slug(text) {
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .toLowerCase().replace(/\.zip$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
   return s || 'mod'
-}
-
-function uniqueId(modsDir, base) {
-  let id = base
-  for (let i = 2; fs.existsSync(path.join(modsDir, id)); i++) id = `${base}-${i}`
-  return id
 }
 
 function writeFiles(dir, files) {

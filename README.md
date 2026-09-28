@@ -24,6 +24,10 @@ The game's original files are pulled from `Root.cpk` automatically when needed; 
 extract by hand. Your current `Mods\` folder is respected: anything the ModKit overwrites is backed
 up and can be restored.
 
+Already had mods installed by hand in `Mods\`? The page offers **Import as a mod**: they become one
+mod ("Previously installed mods"), enabled first in the load order, so they combine with the mods
+you add instead of being replaced. **Restore original** still puts them back exactly as they were.
+
 Windows may show "Windows protected your PC" the first time, because the exe isn't signed:
 "More info" → "Run anyway".
 
@@ -97,6 +101,7 @@ EDFModLoader would load it as a mod.
 cd "D:/Games/EARTH DEFENSE FORCE 6/ModKit"      # created by the exe or by "edfmk"
 edfmk ui                                         # the same UI the exe opens
 edfmk import "path/to/an/old/mod" more-slots    # turns a whole-file mod into a patch mod
+edfmk import-installed                          # same with what was installed by hand in Mods/
 edfmk list
 edfmk build --dry-run                            # shows what it would do and the conflicts
 edfmk build

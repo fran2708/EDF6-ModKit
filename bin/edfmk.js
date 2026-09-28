@@ -5,10 +5,10 @@ const config = require('../src/config')
 const codec = require('../src/codec')
 const { loadMods } = require('../src/mods')
 const { build } = require('../src/build')
-const { deploy, clean } = require('../src/deploy')
+const { deploy, clean, displacedNotes } = require('../src/deploy')
 const { diff } = require('../src/diff')
 const { leaves } = require('../src/path')
-const { importFolder } = require('../src/importer')
+const { importFolder, importInstalled } = require('../src/importer')
 const { ensureWorkspace, isPackaged, vanillaFor } = require('../src/workspace')
 const { fileKey } = require('../src/mods')
 const { startServer, openBrowser } = require('../src/server')
@@ -30,6 +30,8 @@ Usage:
   edfmk paths <file.sgo> [text]      lists the paths and values of an SGO/DSGO (filter by text)
   edfmk diff <original> <modified>   prints the operations that turn one into the other
   edfmk import <folder> <id>         turns a whole-file mod into mods/<id>
+  edfmk import-installed             turns the mods installed by hand in Mods/ into one mod and
+                                     enables it, so they combine with the rest
   edfmk extract <path> [...]         extracts original files from Root.cpk into vanilla/
   edfmk loader                       EDFModLoader/Patcher status and latest official version
   edfmk loader install [--force]     installs or updates them from the official GitHub release
@@ -101,11 +103,12 @@ const commands = {
   build(args, opts) {
     const cfg = workspace(opts)
     if (!cfg.outDir) throw new Error('"gameDir" or "outDir" is missing in modkit.json')
-    const { active } = activeMods(cfg)
+    const { all, active } = activeMods(cfg)
     const result = build(active, { vanilla: vanillaFor(cfg) })
     const patches = checkPatches(result.outputs, cfg.outDir)
     result.conflicts.push(...patches.conflicts)
     result.notes.push(...patches.notes)
+    result.notes.push(...displacedNotes(cfg.outDir, result.outputs, new Set(all.map(m => m.id))))
     printResult(result)
     if (result.errors.length) {
       console.log(`\nNothing was written: ${result.errors.length} error(s).`)
@@ -192,6 +195,18 @@ const commands = {
     const { ops, warnings } = diff(codec.readDoc(a), codec.readDoc(b))
     for (const w of warnings) console.error(`warning: ${w}`)
     console.log(JSON.stringify(ops, null, 2))
+  },
+
+  'import-installed'(args, opts) {
+    const cfg = workspace(opts)
+    if (!cfg.outDir) throw new Error('"gameDir" or "outDir" is missing in modkit.json')
+    const r = importInstalled({ outDir: cfg.outDir, modsDir: cfg.modsDir, vanilla: vanillaFor(cfg) })
+    if (!r) return console.log(`Nothing installed by hand in ${cfg.outDir}`)
+    cfg.raw.load = [r.id, ...(cfg.raw.load || [])]
+    config.save(cfg)
+    for (const n of r.notes) console.log(`note: ${n}`)
+    console.log(`Imported ${r.files.length} file(s) as mods/${r.id} (${r.patched.length} as patches) and enabled it.`)
+    console.log('Run "edfmk build" to apply.')
   },
 
   import(args, opts) {
