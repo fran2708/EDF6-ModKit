@@ -18,7 +18,8 @@ other.
    several versions, it asks which one you want). Tick the mods you want, put them in order and
    press **Apply**. To go back to the unmodded game: **Restore original**.
    To update a mod, drop the new version's zip: it replaces the installed one and keeps its place
-   and on/off state (other variants of the same zip stay separate mods).
+   and on/off state (other variants of the same zip stay separate mods). This works for mods
+   added before this feature too, except memory-patch packs, which get a new copy once.
 
 The black window that stays open is the ModKit running; close it when you're done.
 

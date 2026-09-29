@@ -186,15 +186,27 @@ function readManifest(dir) {
   }
 }
 
-// The mod a zip install goes into: the installed one with the same origin, or the one at baseId
-// if it was installed before origins were recorded; otherwise a new id.
+// Origin of a mod installed from a zip before origins were recorded, from the description
+// importFolder wrote: "Imported from My Mod v1.zip" or "Imported from Armor.zip (Armor x10)".
+// Patch packs and ModKit zips didn't keep the zip name: null.
+function legacyOrigin(manifest) {
+  const m = /^Imported from (.+?\.zip)(?: \((.+)\))?$/i.exec(manifest.description || '')
+  return m ? `${zipKey(m[1])}|${(m[2] || '').toLowerCase()}` : null
+}
+
+// The mod a zip install goes into: the installed one with the same origin; for mods installed
+// before origins were recorded, the one whose description names the same zip, or the one at
+// baseId; otherwise a new id.
 function targetId(modsDir, origin, baseId) {
-  const dirs = fs.existsSync(modsDir)
-    ? fs.readdirSync(modsDir, { withFileTypes: true }).filter(e => e.isDirectory() && !e.name.startsWith('.'))
+  const mods = fs.existsSync(modsDir)
+    ? fs.readdirSync(modsDir, { withFileTypes: true })
+      .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+      .map(e => ({ id: e.name, manifest: readManifest(path.join(modsDir, e.name)) }))
+      .filter(m => m.manifest)
     : []
-  for (const e of dirs) {
-    if (readManifest(path.join(modsDir, e.name))?.origin === origin) return { id: e.name, updated: true }
-  }
+  const found = mods.find(m => m.manifest.origin === origin) ||
+    mods.find(m => !m.manifest.origin && legacyOrigin(m.manifest) === origin)
+  if (found) return { id: found.id, updated: true }
   const old = readManifest(path.join(modsDir, baseId))
   if (old && !old.origin) return { id: baseId, updated: true }
   return { id: uniqueId(modsDir, baseId), updated: false }

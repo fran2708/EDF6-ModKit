@@ -269,6 +269,27 @@ test('installZip: a mod installed before origins were recorded is updated by id'
   assert.equal(readMod(modsDir, 'my-mod').origin, 'name:my-mod|')
 })
 
+test('installZip: older installs are recognized by the zip named in their description', () => {
+  const { vanilla, modsDir } = setup()
+  const old = (id, description) => write(path.join(modsDir, id, 'mod.json'), JSON.stringify({ name: id, description, patches: {} }))
+  old('my-mod-v1', 'Imported from My Mod v1.zip')
+  old('cool-v1-0', 'Imported from Cool v1.0-99-1-0-1700000000.zip')
+  old('armor-armor-x2', 'Imported from Armor.zip (Armor x2)')
+  old('previously-installed', 'Imported from the Mods folder')
+  const buf = n => zip({ 'DEFAULTPACKAGE/CONFIG.SGO': variantDoc(n) })
+
+  assert.deepEqual(installZip(buf('2'), { zipName: 'My Mod v2.zip', modsDir, vanilla }).updated, ['my-mod-v1'])
+  assert.deepEqual(installZip(buf('2'), { zipName: 'Cool v1.1-99-1-1-1710000000.zip', modsDir, vanilla }).updated, ['cool-v1-0'])
+  const armor = zip({
+    'DEFAULTPACKAGE/Armor x2/CONFIG.SGO': variantDoc('x2'),
+    'DEFAULTPACKAGE/Armor x10/CONFIG.SGO': variantDoc('x10'),
+  })
+  assert.deepEqual(installZip(armor, { zipName: 'Armor v2.zip', modsDir, vanilla, variant: 'Armor x2' }).updated, ['armor-armor-x2'])
+  assert.deepEqual(installZip(armor, { zipName: 'Armor v2.zip', modsDir, vanilla, variant: 'Armor x10' }).updated, [])
+  assert.equal(readMod(modsDir, 'my-mod-v1').origin, 'name:my-mod|')
+  assert.deepEqual(modIds(modsDir), ['armor-v2-armor-x10', 'armor-armor-x2', 'cool-v1-0', 'my-mod-v1', 'previously-installed'].sort())
+})
+
 test('API: an enabled mod keeps its place in the load order when updated', async () => {
   const { configFile, modsDir } = setup()
   write(path.join(modsDir, 'first', 'mod.json'), JSON.stringify({ name: 'First', patches: {} }))
