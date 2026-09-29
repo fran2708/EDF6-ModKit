@@ -17,6 +17,8 @@ other.
 5. Drop a mod's `.zip` on the page (Nexus mods that replace files work too; if the zip comes in
    several versions, it asks which one you want). Tick the mods you want, put them in order and
    press **Apply**. To go back to the unmodded game: **Restore original**.
+   To update a mod, drop the new version's zip: it replaces the installed one and keeps its place
+   and on/off state (other variants of the same zip stay separate mods).
 
 The black window that stays open is the ModKit running; close it when you're done.
 

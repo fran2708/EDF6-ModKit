@@ -363,10 +363,25 @@ async function importZip(file) {
       r = await api('POST', '/api/import/choose', { importId: r.importId, variant })
     }
     state = r.state
-    const title = r.installed.length === 1
-      ? `Installed “${nameOf(r.installed[0])}”. Tick it in the list to enable it.`
-      : `Installed ${r.installed.length} mods. Tick the ones you want in the list.`
-    showLog(title, [...r.notes, ...(r.installed.length > 1 ? r.installed.map(id => `  ${nameOf(id)}`) : [])])
+    // A mod that was already installed is updated in place: same place in the list, still enabled.
+    const updated = new Set(r.updated || [])
+    const added = r.installed.filter(id => !updated.has(id))
+    const apply = r.installed.some(id => updated.has(id) && state.load.includes(id))
+      ? ' Press Apply to use the new version.' : ''
+    let title
+    if (!updated.size) {
+      title = added.length === 1
+        ? `Installed “${nameOf(added[0])}”. Tick it in the list to enable it.`
+        : `Installed ${added.length} mods. Tick the ones you want in the list.`
+    } else if (!added.length) {
+      title = (updated.size === 1 ? `Updated “${nameOf(r.installed[0])}”.` : `Updated ${updated.size} mods.`) + apply
+    } else {
+      title = `Installed ${added.length} and updated ${updated.size} mods.${apply}`
+    }
+    const list = r.installed.length > 1
+      ? r.installed.map(id => `  ${nameOf(id)}${updated.has(id) ? ' (updated)' : ''}`)
+      : []
+    showLog(title, [...r.notes, ...list])
   })
 }
 

@@ -4,7 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const { zipSync, strToU8 } = require('fflate')
 const codec = require('../src/codec')
-const { installZip, locate } = require('../src/zipimport')
+const { installZip, locate, zipKey } = require('../src/zipimport')
 const { vanillaProvider } = require('../src/vanilla')
 const { startServer } = require('../src/server')
 const { configDoc, tmpdir, write } = require('./helpers')
@@ -180,6 +180,112 @@ test('API: importing the mods installed by hand in Mods/', async () => {
     const doc = codec.decode(fs.readFileSync(path.join(game, 'Mods', CONFIG)))
     assert.equal(doc.variables[2].value, 'By hand')
     assert.match((await post('api/import-installed')).error, /nothing installed by hand/)
+  } finally {
+    await srv.close()
+  }
+})
+
+const modIds = modsDir => fs.readdirSync(modsDir).sort()
+const readMod = (modsDir, id) => JSON.parse(fs.readFileSync(path.join(modsDir, id, 'mod.json'), 'utf8'))
+
+test('zipKey: Nexus mod id, or the name without its version', () => {
+  assert.equal(zipKey('Moist Patches v1.2-71-v1-2-1728004564.zip'), 'nexus:71')
+  assert.equal(zipKey('Moist Patches v1.3-71-1-3-1730000000 (1).zip'), 'nexus:71')
+  assert.equal(zipKey('My Mod v2.zip'), 'name:my-mod')
+  assert.equal(zipKey('My Mod 1.0.3.zip'), 'name:my-mod')
+  assert.equal(zipKey('Armor x10.zip'), 'name:armor-x10')
+})
+
+test('installZip: dropping a mod again updates it instead of adding a copy', () => {
+  const { vanilla, modsDir } = setup()
+  const v1 = zip({ 'My Mod/DEFAULTPACKAGE/CONFIG.SGO': variantDoc('One'), 'My Mod/WEAPON/new.sgo': 'x' })
+  const first = installZip(v1, { zipName: 'My Mod v1.zip', modsDir, vanilla })
+  assert.deepEqual(first.updated, [])
+  assert.ok(fs.existsSync(path.join(modsDir, 'my-mod-v1', 'files', 'WEAPON', 'new.sgo')))
+
+  const again = installZip(v1, { zipName: 'My Mod v1.zip', modsDir, vanilla })
+  assert.deepEqual(again.installed, ['my-mod-v1'])
+  assert.deepEqual(again.updated, ['my-mod-v1'])
+
+  // A new version (renamed wrapper, one file dropped) goes into the same mod.
+  const v2 = zip({ 'My Mod v2/DEFAULTPACKAGE/CONFIG.SGO': variantDoc('Two') })
+  const r = installZip(v2, { zipName: 'My Mod v2.zip', modsDir, vanilla })
+  assert.deepEqual(r.updated, ['my-mod-v1'])
+  assert.deepEqual(modIds(modsDir), ['my-mod-v1'])
+  const manifest = readMod(modsDir, 'my-mod-v1')
+  assert.equal(manifest.name, 'My Mod v2')
+  assert.equal(manifest.patches[CONFIG][0].value, 'Two')
+  assert.ok(!fs.existsSync(path.join(modsDir, 'my-mod-v1', 'files', 'WEAPON', 'new.sgo')))
+})
+
+test('installZip: Nexus downloads of different versions update the same mod', () => {
+  const { vanilla, modsDir } = setup()
+  const buf = n => zip({ 'DEFAULTPACKAGE/CONFIG.SGO': variantDoc(n) })
+  installZip(buf('1'), { zipName: 'Cool v1.0-99-1-0-1700000000.zip', modsDir, vanilla })
+  const r = installZip(buf('2'), { zipName: 'Cool Mod v1.1-99-1-1-1710000000.zip', modsDir, vanilla })
+  assert.deepEqual(r.updated, ['cool-v1-0'])
+  assert.deepEqual(modIds(modsDir), ['cool-v1-0'])
+  assert.equal(readMod(modsDir, 'cool-v1-0').patches[CONFIG][0].value, '2')
+})
+
+test('installZip: other variants stay separate mods, the same variant is updated', () => {
+  const { vanilla, modsDir } = setup()
+  const buf = zip({
+    'DEFAULTPACKAGE/Armor x2/CONFIG.SGO': variantDoc('x2'),
+    'DEFAULTPACKAGE/Armor x10/CONFIG.SGO': variantDoc('x10'),
+  })
+  installZip(buf, { zipName: 'Armor.zip', modsDir, vanilla, variant: 'Armor x2' })
+  const x10 = installZip(buf, { zipName: 'Armor.zip', modsDir, vanilla, variant: 'Armor x10' })
+  assert.deepEqual(x10.updated, [])
+  const x2 = installZip(buf, { zipName: 'Armor.zip', modsDir, vanilla, variant: 'Armor x2' })
+  assert.deepEqual(x2.updated, ['armor-armor-x2'])
+  assert.deepEqual(modIds(modsDir), ['armor-armor-x10', 'armor-armor-x2'])
+})
+
+test('installZip: patch packs and ModKit zips are updated too', () => {
+  const { vanilla, modsDir } = setup()
+  const pack = zip({ 'Mods/Patches/Fast.txt': '// fast\n', 'Mods/Patches/Slow.txt': '// slow\n' })
+  const first = installZip(pack, { zipName: 'Pack v1.zip', modsDir, vanilla })
+  assert.equal(first.installed.length, 2)
+  const r = installZip(pack, { zipName: 'Pack v2.zip', modsDir, vanilla })
+  assert.deepEqual(r.updated.sort(), first.installed.sort())
+  assert.match(readMod(modsDir, first.installed[0]).name, /^Pack v2: /)
+
+  const modkit = n => zip({ 'armor/mod.json': JSON.stringify({ name: `Armor ${n}`, patches: {} }) })
+  installZip(modkit(1), { zipName: 'armor-1.zip', modsDir, vanilla })
+  const again = installZip(modkit(2), { zipName: 'armor-2.zip', modsDir, vanilla })
+  assert.deepEqual(again.updated, ['armor'])
+  assert.equal(readMod(modsDir, 'armor').name, 'Armor 2')
+  assert.equal(modIds(modsDir).length, 3)
+})
+
+test('installZip: a mod installed before origins were recorded is updated by id', () => {
+  const { vanilla, modsDir } = setup()
+  write(path.join(modsDir, 'my-mod', 'mod.json'), JSON.stringify({ name: 'My Mod', patches: {} }))
+  write(path.join(modsDir, 'my-mod', 'files', 'old.txt'), 'x')
+  const r = installZip(zip({ 'DEFAULTPACKAGE/CONFIG.SGO': variantDoc('New') }), { zipName: 'My Mod.zip', modsDir, vanilla })
+  assert.deepEqual(r.updated, ['my-mod'])
+  assert.ok(!fs.existsSync(path.join(modsDir, 'my-mod', 'files', 'old.txt')))
+  assert.equal(readMod(modsDir, 'my-mod').origin, 'name:my-mod|')
+})
+
+test('API: an enabled mod keeps its place in the load order when updated', async () => {
+  const { configFile, modsDir } = setup()
+  write(path.join(modsDir, 'first', 'mod.json'), JSON.stringify({ name: 'First', patches: {} }))
+  write(path.join(modsDir, 'last', 'mod.json'), JSON.stringify({ name: 'Last', patches: {} }))
+  const srv = await startServer({ configFile })
+  const base = srv.url.split('?')[0]
+  const post = (url, body) => fetch(base + url, { method: 'POST', headers: { 'x-token': srv.token }, body }).then(r => r.json())
+  try {
+    const buf = n => zip({ 'DEFAULTPACKAGE/CONFIG.SGO': variantDoc(n) })
+    let data = await post('api/import?name=Mid%20v1.zip', buf('1'))
+    const id = data.installed[0]
+    await post('api/load', JSON.stringify({ load: ['first', id, 'last'] }))
+    data = await post('api/import?name=Mid%20v2.zip', buf('2'))
+    assert.deepEqual(data.installed, [id])
+    assert.deepEqual(data.updated, [id])
+    assert.deepEqual(data.state.load, ['first', id, 'last'])
+    assert.equal(data.state.mods.length, 3)
   } finally {
     await srv.close()
   }

@@ -149,7 +149,7 @@ function createApp(configFile, { loader } = {}) {
         pendingZips.set(importId, { buffer: body, zipName })
         return { importId, variants: r.variants }
       }
-      return { installed: r.installed, notes: r.notes, state: state() }
+      return { installed: r.installed, updated: r.updated, notes: r.notes, state: state() }
     },
 
     'POST /api/import/choose': async body => {
@@ -161,7 +161,7 @@ function createApp(configFile, { loader } = {}) {
       const r = installZip(pending.buffer, {
         zipName: pending.zipName, modsDir: c.modsDir, vanilla: vanillaFor(c), variant,
       })
-      return { installed: r.installed, notes: r.notes, state: state() }
+      return { installed: r.installed, updated: r.updated, notes: r.notes, state: state() }
     },
 
     'GET /api/loader': async (body, url) => {

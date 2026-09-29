@@ -14,7 +14,8 @@ const { unmanagedFiles, adopt } = require('./deploy')
 const { gameTopDirs } = require('./vanilla')
 
 // files: which files of srcDir to import (all of them by default).
-function importFolder(srcDir, destDir, { vanilla, vanillaDir, id, name, source, files } = {}) {
+// origin: where the mod came from (see zipimport.js), so dropping it again updates it.
+function importFolder(srcDir, destDir, { vanilla, vanillaDir, id, name, source, files, origin } = {}) {
   vanilla = vanilla || (vanillaDir ? indexDir(vanillaDir) : new Map())
   const patches = {}
   const copied = []
@@ -49,6 +50,7 @@ function importFolder(srcDir, destDir, { vanilla, vanillaDir, id, name, source, 
     description: `Imported from ${source || path.basename(srcDir)}`,
     patches,
   }
+  if (origin) manifest.origin = origin
   fs.mkdirSync(destDir, { recursive: true })
   fs.writeFileSync(path.join(destDir, 'mod.json'), JSON.stringify(manifest, null, 2) + '\n')
   return { patched: Object.keys(patches), copied, skipped, notes }

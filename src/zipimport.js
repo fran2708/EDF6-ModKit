@@ -9,6 +9,9 @@
 //     "Armor x10/"), which are offered so the user picks one
 //
 // Each file is located using the index of the game's CPKs (vanilla.relOf / topDirs).
+//
+// Every mod installed from a zip records its "origin" in mod.json (see zipKey), so dropping the
+// same mod again, or a newer version of it, updates the installed one instead of adding a copy.
 
 const fs = require('fs')
 const os = require('os')
@@ -165,30 +168,88 @@ function cleanZipName(zipName) {
     .trim() || 'mod'
 }
 
+// What identifies a download across versions: the Nexus mod id if the name has one, otherwise
+// the name without its version ("My Mod v2.zip" and "My Mod v3.zip" are the same mod).
+function zipKey(zipName) {
+  const base = path.basename(zipName).replace(/\.zip$/i, '').replace(/\s*\(\d+\)$/, '')
+  const nexus = /-(\d+)(?:-[a-z0-9.]+)*-\d{9,}$/i.exec(base)
+  if (nexus) return `nexus:${nexus[1]}`
+  const name = slug(cleanZipName(zipName))
+  return `name:${name.replace(/-v?\d+(?:-\d+)*[a-z]?$/, '') || name}`
+}
+
+function readManifest(dir) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(dir, 'mod.json'), 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+// The mod a zip install goes into: the installed one with the same origin, or the one at baseId
+// if it was installed before origins were recorded; otherwise a new id.
+function targetId(modsDir, origin, baseId) {
+  const dirs = fs.existsSync(modsDir)
+    ? fs.readdirSync(modsDir, { withFileTypes: true }).filter(e => e.isDirectory() && !e.name.startsWith('.'))
+    : []
+  for (const e of dirs) {
+    if (readManifest(path.join(modsDir, e.name))?.origin === origin) return { id: e.name, updated: true }
+  }
+  const old = readManifest(path.join(modsDir, baseId))
+  if (old && !old.origin) return { id: baseId, updated: true }
+  return { id: uniqueId(modsDir, baseId), updated: false }
+}
+
+// Installs a mod, or updates it in place if it's already there: keeping its id keeps it enabled
+// and in its place in the load order. write(dir) fills the mod's folder; the old one is only
+// replaced once the new one is complete.
+function installMod(modsDir, { origin, baseId }, write) {
+  const { id, updated } = targetId(modsDir, origin, baseId)
+  const dir = path.join(modsDir, id)
+  const staging = path.join(modsDir, `.${id}.new`)
+  fs.rmSync(staging, { recursive: true, force: true })
+  try {
+    const result = write(staging, id)
+    fs.rmSync(dir, { recursive: true, force: true })
+    fs.renameSync(staging, dir)
+    return { id, updated, result }
+  } finally {
+    fs.rmSync(staging, { recursive: true, force: true })
+  }
+}
+
+// Merges several installMod() results into what installZip returns.
+function summary(results, notes = []) {
+  return {
+    installed: results.map(r => r.id),
+    updated: results.filter(r => r.updated).map(r => r.id),
+    notes,
+  }
+}
+
 const PATCH_REL = /^Patches\/[^/]+\.txt$/i
 
 // A group made only of Patcher patches is a pack of independent tweaks: each patch becomes its
 // own mod, so the player enables just the ones they want.
-function installPatchMods(files, { modsDir, packName }) {
-  const installed = []
-  for (const f of files) {
+function installPatchMods(files, { modsDir, packName, origin }) {
+  return files.map(f => {
     const patchName = path.basename(f.rel, path.extname(f.rel))
     const name = files.length > 1 ? `${packName}: ${patchName}` : packName
-    const id = uniqueId(modsDir, slug(name))
-    const info = patchInfo(f.data.toString('utf8'))
-    const dir = path.join(modsDir, id)
-    writeFiles(path.join(dir, 'files'), [f])
-    const manifest = {
-      name,
-      version: '',
-      author: info.author,
-      description: info.description || `Memory patch from ${packName}`,
-      patches: {},
-    }
-    fs.writeFileSync(path.join(dir, 'mod.json'), JSON.stringify(manifest, null, 2) + '\n')
-    installed.push(id)
-  }
-  return installed
+    const patchOrigin = `${origin}|${patchName.toLowerCase()}`
+    return installMod(modsDir, { origin: patchOrigin, baseId: slug(name) }, dir => {
+      const info = patchInfo(f.data.toString('utf8'))
+      writeFiles(path.join(dir, 'files'), [f])
+      const manifest = {
+        name,
+        version: '',
+        author: info.author,
+        description: info.description || `Memory patch from ${packName}`,
+        patches: {},
+        origin: patchOrigin,
+      }
+      fs.writeFileSync(path.join(dir, 'mod.json'), JSON.stringify(manifest, null, 2) + '\n')
+    })
+  })
 }
 
 // Readable name for a variant: the last folder of its label.
@@ -197,13 +258,13 @@ function variantName(label) {
 }
 
 // Builds a folder with the game's structure and imports it like any old-style mod.
-function importFiles(files, { modsDir, vanilla, name, source }) {
+function importFiles(files, { modsDir, vanilla, name, source, origin }) {
   const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'edfmk-zip-'))
   try {
     writeFiles(staging, files)
-    const id = uniqueId(modsDir, slug(name))
-    const result = importFolder(staging, path.join(modsDir, id), { vanilla, id, name, source })
-    return { id, notes: result.notes }
+    const r = installMod(modsDir, { origin, baseId: slug(name) }, (dir, id) =>
+      importFolder(staging, dir, { vanilla, id, name, source, origin }))
+    return { ...r, notes: r.result.notes }
   } finally {
     fs.rmSync(staging, { recursive: true, force: true })
   }
@@ -211,9 +272,10 @@ function importFiles(files, { modsDir, vanilla, name, source }) {
 
 function installPlugin(analysis, { zipName, modsDir, vanilla }) {
   if (!analysis.files.length) throw new Error('The plugin zip has nothing to install besides EDFModLoader files')
-  const { id, notes } = importFiles(analysis.files, {
-    modsDir, vanilla, name: cleanZipName(zipName), source: path.basename(zipName),
+  const r = importFiles(analysis.files, {
+    modsDir, vanilla, name: cleanZipName(zipName), source: path.basename(zipName), origin: `${zipKey(zipName)}|`,
   })
+  const notes = r.notes
   const dirs = gameTopDirs(vanilla)
   const dataDirs = [...new Set(analysis.files.filter(f => isUserData(f.rel, dirs)).map(f => f.rel.split('/')[0] + '/'))]
   if (dataDirs.length) {
@@ -225,7 +287,7 @@ function installPlugin(analysis, { zipName, modsDir, vanilla }) {
   if (analysis.ignored.length) {
     notes.push(`Ignored ${analysis.ignored.length} file(s) outside the Mods folder: ${analysis.ignored.slice(0, 3).join(', ')}`)
   }
-  return { installed: [id], notes }
+  return summary([r], notes)
 }
 
 // Installs the zip. If it's an old-style mod with several variants and none was picked, returns
@@ -233,15 +295,19 @@ function installPlugin(analysis, { zipName, modsDir, vanilla }) {
 function installZip(buffer, { zipName = 'mod.zip', modsDir, vanilla, variant } = {}) {
   const analysis = analyzeZip(buffer, vanilla)
   const baseName = slug(path.basename(zipName))
+  const key = zipKey(zipName)
 
   if (analysis.kind === 'modkit') {
-    const installed = []
-    for (const m of analysis.mods) {
-      const id = uniqueId(modsDir, slug(m.dir ? m.dir.split('/').at(-1) : baseName))
-      writeFiles(path.join(modsDir, id), m.files)
-      installed.push(id)
-    }
-    return { installed, notes: [] }
+    return summary(analysis.mods.map(m => {
+      const baseId = slug(m.dir ? m.dir.split('/').at(-1) : baseName)
+      const origin = `${key}|${m.dir ? baseId : ''}`
+      return installMod(modsDir, { origin, baseId }, dir => {
+        writeFiles(dir, m.files)
+        const manifest = readManifest(dir)
+        if (!manifest) throw new Error(`${m.dir ? m.dir + '/' : ''}mod.json in the zip is not valid JSON`)
+        fs.writeFileSync(path.join(dir, 'mod.json'), JSON.stringify({ ...manifest, origin }, null, 2) + '\n')
+      })
+    }))
   }
   if (analysis.kind === 'plugin') return installPlugin(analysis, { zipName, modsDir, vanilla })
 
@@ -270,16 +336,20 @@ function installZip(buffer, { zipName = 'mod.zip', modsDir, vanilla, variant } =
     ? [`Ignored ${analysis.ignored.length} file(s) that are not game files: ${analysis.ignored.slice(0, 3).join(', ')}`]
     : []
 
+  // Variants of the same zip are separate mods; the wrapper folders around them are left out,
+  // since they often carry the version.
+  const origin = `${key}|${labels.length > 1 ? variantName(label).toLowerCase() : ''}`
+
   if (files.every(f => PATCH_REL.test(f.rel))) {
-    const installed = installPatchMods(files, { modsDir, packName: name })
-    const notes = installed.length > 1
-      ? [`Each of the ${installed.length} patches was installed as its own mod, so you can enable only the ones you want.`]
+    const results = installPatchMods(files, { modsDir, packName: name, origin })
+    const notes = results.length > 1
+      ? [`Each of the ${results.length} patches was installed as its own mod, so you can enable only the ones you want.`]
       : []
-    return { installed, notes: [...notes, ...ignoredNote] }
+    return summary(results, [...notes, ...ignoredNote])
   }
 
-  const { id, notes } = importFiles(files, { modsDir, vanilla, name, source })
-  return { installed: [id], notes: [...notes, ...ignoredNote] }
+  const r = importFiles(files, { modsDir, vanilla, name, source, origin })
+  return summary([r], [...r.notes, ...ignoredNote])
 }
 
-module.exports = { analyzeZip, installZip, locate, slug, cleanZipName }
+module.exports = { analyzeZip, installZip, locate, slug, cleanZipName, zipKey }
