@@ -119,8 +119,8 @@
   </section>
 
   <label class="drop" id="drop">
-    <input type="file" id="file" accept=".zip" hidden>
-    <strong>Drop a mod’s .zip here</strong> or click to choose it.<br>
+    <input type="file" id="file" accept=".zip" multiple hidden>
+    <strong>Drop mod .zip files here</strong> (one or several) or click to choose them.<br>
     <span class="muted">Nexus mods that replace files work too: they are converted automatically so they can be combined.</span>
   </label>
 
@@ -138,6 +138,7 @@
 <dialog id="variants">
   <form method="dialog">
     <h2 style="margin-top:0">This mod comes in several versions</h2>
+    <p class="muted" id="variantZip" hidden></p>
     <p class="muted">Choose the one you want to install.</p>
     <div id="variantList"></div>
     <div class="actions" style="justify-content:flex-end;margin-top:12px">
@@ -147,7 +148,7 @@
   </form>
 </dialog>
 
-<div class="dropcover" id="dropcover" hidden><span>Drop the .zip to add it</span></div>
+<div class="dropcover" id="dropcover" hidden><span>Drop the .zip files to add them</span></div>
 
 <div class="toast" id="toast"></div>
 
@@ -352,41 +353,84 @@ $('installedBtn').onclick = () => run(async () => {
   showLog(`Imported them as “${nameOf(r.installed[0])}” and enabled it. Press Apply to combine it with your other mods.`, r.notes)
 })
 
-async function importZip(file) {
-  if (!/\.zip$/i.test(file.name)) return toast('It has to be a .zip file')
+// Uploads one zip, asking for the variant if it has several. null if the user cancelled.
+// zipName: shown in the variant dialog when several zips are being added.
+async function importOne(file, zipName) {
+  const buffer = await file.arrayBuffer()
+  let r = await api('POST', '/api/import?name=' + encodeURIComponent(file.name), buffer, true)
+  if (r.variants) {
+    const variant = await chooseVariant(r.variants, zipName)
+    if (variant === null) return null
+    r = await api('POST', '/api/import/choose', { importId: r.importId, variant })
+  }
+  return r
+}
+
+// Title for what a drop installed. A mod that was already installed is updated in place: same
+// place in the list, still enabled.
+function importTitle(installed, updated) {
+  const added = installed.filter(id => !updated.has(id))
+  const apply = installed.some(id => updated.has(id) && state.load.includes(id))
+    ? ' Press Apply to use the new version.' : ''
+  if (!updated.size) {
+    return added.length === 1
+      ? `Installed “${nameOf(added[0])}”. Tick it in the list to enable it.`
+      : `Installed ${added.length} mods. Tick the ones you want in the list.`
+  }
+  if (!added.length) {
+    return (updated.size === 1 ? `Updated “${nameOf(installed[0])}”.` : `Updated ${updated.size} mods.`) + apply
+  }
+  return `Installed ${added.length} and updated ${updated.size} mods.${apply}`
+}
+
+// One or several zips, dropped or picked together. They go one after the other: each may ask
+// for a variant, and one that fails doesn't stop the rest.
+async function importZips(files) {
+  const zips = files.filter(f => /\.zip$/i.test(f.name))
+  const skipped = files.filter(f => !zips.includes(f)).map(f => `Skipped ${f.name}: not a .zip file`)
+  if (!zips.length) return toast('It has to be a .zip file')
   await run(async () => {
-    const buffer = await file.arrayBuffer()
-    let r = await api('POST', '/api/import?name=' + encodeURIComponent(file.name), buffer, true)
-    if (r.variants) {
-      const variant = await chooseVariant(r.variants)
-      if (variant === null) return
-      r = await api('POST', '/api/import/choose', { importId: r.importId, variant })
+    if (zips.length === 1) {
+      const r = await importOne(zips[0], '')
+      if (!r) return
+      state = r.state
+      const updated = new Set(r.updated || [])
+      const list = r.installed.length > 1
+        ? r.installed.map(id => `  ${nameOf(id)}${updated.has(id) ? ' (updated)' : ''}`)
+        : []
+      return showLog(importTitle(r.installed, updated), [...r.notes, ...list, ...skipped])
     }
-    state = r.state
-    // A mod that was already installed is updated in place: same place in the list, still enabled.
-    const updated = new Set(r.updated || [])
-    const added = r.installed.filter(id => !updated.has(id))
-    const apply = r.installed.some(id => updated.has(id) && state.load.includes(id))
-      ? ' Press Apply to use the new version.' : ''
-    let title
-    if (!updated.size) {
-      title = added.length === 1
-        ? `Installed “${nameOf(added[0])}”. Tick it in the list to enable it.`
-        : `Installed ${added.length} mods. Tick the ones you want in the list.`
-    } else if (!added.length) {
-      title = (updated.size === 1 ? `Updated “${nameOf(r.installed[0])}”.` : `Updated ${updated.size} mods.`) + apply
-    } else {
-      title = `Installed ${added.length} and updated ${updated.size} mods.${apply}`
+
+    const results = []
+    for (const file of zips) {
+      try {
+        const r = await importOne(file, file.name)
+        if (r) state = r.state
+        results.push({ file, r })
+      } catch (e) {
+        results.push({ file, error: e.message })
+      }
     }
-    const list = r.installed.length > 1
-      ? r.installed.map(id => `  ${nameOf(id)}${updated.has(id) ? ' (updated)' : ''}`)
-      : []
-    showLog(title, [...r.notes, ...list])
+    const installed = results.flatMap(x => x.r?.installed || [])
+    const updated = new Set(results.flatMap(x => x.r?.updated || []))
+    const lines = results.flatMap(({ file, r, error }) => {
+      if (error) return [`${file.name}: failed: ${error}`]
+      if (!r) return [`${file.name}: cancelled`]
+      const done = r.installed.map(id => `${updated.has(id) ? 'updated' : 'installed'} “${nameOf(id)}”`)
+      return [`${file.name}: ${done.join(', ')}`, ...r.notes.map(n => `  ${n}`)]
+    })
+    const failed = results.filter(x => x.error).length
+    const title = installed.length
+      ? importTitle(installed, updated)
+      : failed ? 'None of the zips could be added.' : 'Nothing was added.'
+    showLog(title, [...lines, ...skipped])
   })
 }
 
-function chooseVariant(variants) {
+function chooseVariant(variants, zipName) {
   return new Promise(resolve => {
+    $('variantZip').textContent = zipName
+    $('variantZip').hidden = !zipName
     const list = $('variantList')
     list.innerHTML = ''
     variants.forEach((v, i) => {
@@ -433,14 +477,14 @@ document.addEventListener('drop', e => {
   dragDepth = 0
   $('dropcover').hidden = true
   drop.classList.remove('hover')
-  const file = e.dataTransfer.files[0]
-  if (file) importZip(file)
+  const files = [...e.dataTransfer.files]
+  if (files.length) importZips(files)
 })
 
 $('file').onchange = e => {
-  const file = e.target.files[0]
+  const files = [...e.target.files]
   e.target.value = ''
-  if (file) importZip(file)
+  if (files.length) importZips(files)
 }
 
 // --- mod loader (EDFModLoader + Patcher) ---
