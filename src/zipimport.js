@@ -19,9 +19,9 @@ const path = require('path')
 const { unzipSync } = require('fflate')
 const { fileKey, uniqueId } = require('./mods')
 const { importFolder } = require('./importer')
-const { looksLikePatch, patchInfo } = require('./patcher')
+const { PATCH_REL, looksLikePatch, patchInfo } = require('./patcher')
 const { PATCHER_DLL } = require('./loader')
-const { gameTopDirs, isUserData } = require('./vanilla')
+const { isUserData } = require('./vanilla')
 
 // Files a plugin zip must not replace: they come with EDFModLoader (see loader.js).
 const LOADER_FILES = new Set([fileKey(PATCHER_DLL.replace(/^Mods\//, ''))])
@@ -239,8 +239,6 @@ function summary(results, notes = []) {
   }
 }
 
-const PATCH_REL = /^Patches\/[^/]+\.txt$/i
-
 // A group made only of Patcher patches is a pack of independent tweaks: each patch becomes its
 // own mod, so the player enables just the ones they want.
 function installPatchMods(files, { modsDir, packName, origin }) {
@@ -288,7 +286,7 @@ function installPlugin(analysis, { zipName, modsDir, vanilla }) {
     modsDir, vanilla, name: cleanZipName(zipName), source: path.basename(zipName), origin: `${zipKey(zipName)}|`,
   })
   const notes = r.notes
-  const dirs = gameTopDirs(vanilla)
+  const dirs = vanilla.topDirs()
   const dataDirs = [...new Set(analysis.files.filter(f => isUserData(f.rel, dirs)).map(f => f.rel.split('/')[0] + '/'))]
   if (dataDirs.length) {
     notes.push(`Your settings and progress in ${dataDirs.join(', ')} are kept when you turn it off or update it.`)
@@ -364,4 +362,4 @@ function installZip(buffer, { zipName = 'mod.zip', modsDir, vanilla, variant } =
   return summary([r], [...r.notes, ...ignoredNote])
 }
 
-module.exports = { analyzeZip, installZip, locate, slug, cleanZipName, zipKey }
+module.exports = { installZip, locate, cleanZipName, zipKey }

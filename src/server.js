@@ -7,14 +7,13 @@ const path = require('path')
 const crypto = require('crypto')
 const { execFile } = require('child_process')
 const config = require('./config')
-const { loadMods } = require('./mods')
+const { loadMods, activeMods } = require('./mods')
 const { build } = require('./build')
 const { deploy, clean, pendingChanges, unmanagedFiles, displacedNotes } = require('./deploy')
 const { importInstalled } = require('./importer')
 const { installZip } = require('./zipimport')
 const { checkPatches } = require('./patcher')
 const { isPackaged, vanillaFor } = require('./workspace')
-const { gameTopDirs } = require('./vanilla')
 const { createLoader } = require('./loader')
 const pkg = require('../package.json')
 
@@ -50,17 +49,13 @@ function createApp(configFile, { loader } = {}) {
 
   const cfg = () => config.load(configFile)
 
-  function modsOf(c) {
-    const all = loadMods(c.modsDir)
-    const byId = new Map(all.map(m => [m.id, m]))
-    return { all, active: c.load.filter(id => byId.has(id)).map(id => byId.get(id)) }
-  }
+  const modsOf = c => activeMods(c.modsDir, c.load)
 
   function preview(c = cfg()) {
     const { all, active } = modsOf(c)
     const vanilla = vanillaFor(c)
     const ids = new Set(all.map(m => m.id))
-    const dirs = gameTopDirs(vanilla)
+    const dirs = vanilla.topDirs()
     const result = build(active, { vanilla })
     const patches = checkPatches(result.outputs, c.outDir)
     result.conflicts.push(...patches.conflicts)

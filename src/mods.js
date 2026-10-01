@@ -88,6 +88,16 @@ function indexDir(dir) {
   return index
 }
 
+// The mods `load` enables, in load order. strict: throw on ids that don't exist instead of
+// skipping them.
+function activeMods(modsDir, load, { strict = false } = {}) {
+  const all = loadMods(modsDir)
+  const byId = new Map(all.map(m => [m.id, m]))
+  const missing = load.filter(id => !byId.has(id))
+  if (strict && missing.length) throw new Error(`"load" lists mods that don't exist in ${modsDir}: ${missing.join(', ')}`)
+  return { all, active: load.filter(id => byId.has(id)).map(id => byId.get(id)) }
+}
+
 // base, or base-2, base-3... whichever isn't taken in modsDir yet.
 function uniqueId(modsDir, base) {
   let id = base
@@ -95,4 +105,4 @@ function uniqueId(modsDir, base) {
   return id
 }
 
-module.exports = { fileKey, listFiles, loadMod, loadMods, indexDir, uniqueId }
+module.exports = { fileKey, listFiles, loadMods, activeMods, indexDir, uniqueId }

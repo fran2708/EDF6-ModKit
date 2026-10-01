@@ -12,12 +12,8 @@
 // into another file, the difference can't be expressed as a patch: a warning is returned and the
 // caller uses the modified file whole instead.
 
-const { join } = require('./path')
+const { join, same } = require('./path')
 const { isFileSpecific } = require('./codec')
-
-function same(a, b) {
-  return JSON.stringify(a) === JSON.stringify(b)
-}
 
 function stripName(node) {
   const { name, ...rest } = node

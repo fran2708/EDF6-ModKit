@@ -193,4 +193,4 @@ function createLoader({ fetch = globalThis.fetch, cacheDir = null } = {}) {
   return { latest, status, install }
 }
 
-module.exports = { createLoader, releaseFiles, REPO, PATCHER_DLL }
+module.exports = { createLoader, PATCHER_DLL }

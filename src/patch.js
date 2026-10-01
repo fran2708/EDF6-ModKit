@@ -137,4 +137,4 @@ function apply(doc, op) {
   return events
 }
 
-module.exports = { apply, validate, NUMERIC, OPS }
+module.exports = { apply, validate }

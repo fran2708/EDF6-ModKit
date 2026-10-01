@@ -118,4 +118,4 @@ function init(dir, gameDirArg) {
   return { file, workspace }
 }
 
-module.exports = { load, save, init, checkLayout, overlaps, FILE, WORKSPACE }
+module.exports = { load, save, init, overlaps, FILE, WORKSPACE }

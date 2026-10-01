@@ -3,7 +3,8 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const path = require('path')
 const codec = require('../src/codec')
-const { loadMods, indexDir } = require('../src/mods')
+const { loadMods } = require('../src/mods')
+const { vanillaProvider } = require('../src/vanilla')
 const { build } = require('../src/build')
 const { deploy, clean, pendingChanges, unmanagedFiles, displacedNotes } = require('../src/deploy')
 const { importInstalled } = require('../src/importer')
@@ -29,7 +30,7 @@ function setup() {
     patches: { [CONFIG]: [{ op: 'mul', path: 'SoldierInit/0/3/0', value: 10 }] },
   }))
   return {
-    dir, out, modsDir: path.join(dir, 'ModKit', 'mods'), vanilla: indexDir(vanilla),
+    dir, out, modsDir: path.join(dir, 'ModKit', 'mods'), vanilla: vanillaProvider({ vanillaDir: vanilla }),
     original: fs.readFileSync(path.join(out, CONFIG)),
   }
 }

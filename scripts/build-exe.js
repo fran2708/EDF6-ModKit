@@ -18,14 +18,10 @@ const BLOB = path.join(DIST, 'edfmk.blob')
 const EXE = path.join(DIST, 'EDF6-ModKit.exe')
 const FUSE = 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2'
 
-function step(msg) {
-  console.log(`> ${msg}`)
-}
-
 async function main() {
   fs.mkdirSync(DIST, { recursive: true })
 
-  step('bundle')
+  console.log('> bundle')
   await esbuild.build({
     entryPoints: [path.join(ROOT, 'bin', 'edfmk.js')],
     bundle: true,
@@ -36,7 +32,7 @@ async function main() {
     logLevel: 'warning',
   })
 
-  step('blob SEA')
+  console.log('> blob SEA')
   fs.writeFileSync(path.join(DIST, 'sea-config.json'), JSON.stringify({
     main: BUNDLE,
     output: BLOB,
@@ -46,7 +42,7 @@ async function main() {
   }))
   execFileSync(process.execPath, ['--experimental-sea-config', path.join(DIST, 'sea-config.json')], { stdio: 'inherit' })
 
-  step('exe')
+  console.log('> exe')
   fs.copyFileSync(process.execPath, EXE)
   execFileSync(process.execPath, [
     require.resolve('postject/dist/cli.js'),

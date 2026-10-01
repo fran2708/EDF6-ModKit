@@ -210,4 +210,4 @@ function patchInfo(text) {
   return { author, description }
 }
 
-module.exports = { parsePatch, patchConflicts, patchSources, checkPatches, looksLikePatch, patchInfo }
+module.exports = { PATCH_REL, parsePatch, patchConflicts, patchSources, checkPatches, looksLikePatch, patchInfo }

@@ -159,4 +159,4 @@ function readDoc(file) {
   return decode(fs.readFileSync(file))
 }
 
-module.exports = { decode, encode, readDoc, formatOf, isPatchable, isFileSpecific }
+module.exports = { decode, encode, readDoc, isPatchable, isFileSpecific }

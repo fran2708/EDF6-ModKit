@@ -8,7 +8,7 @@ const { loadMods, fileKey } = require('../src/mods')
 const { build } = require('../src/build')
 const { deploy, clean, pendingChanges, unmanagedFiles, readManifest } = require('../src/deploy')
 const { installZip } = require('../src/zipimport')
-const { vanillaProvider, gameTopDirs } = require('../src/vanilla')
+const { vanillaProvider } = require('../src/vanilla')
 const { configDoc, tmpdir, write } = require('./helpers')
 
 const DLL = 'Plugins/EDF6Compendium.dll'
@@ -121,7 +121,7 @@ test('unmanagedFiles: plugin data folders and loose files are not mods installed
   write(path.join(t.out, INI), 'x')
   write(path.join(t.out, 'notes.txt'), 'x')
   write(path.join(t.out, 'DEFAULTPACKAGE', 'CONFIG.SGO'), codec.encode(configDoc()))
-  assert.deepEqual(unmanagedFiles(t.out, new Set(), gameTopDirs(t.vanilla)), ['DEFAULTPACKAGE/CONFIG.SGO'])
+  assert.deepEqual(unmanagedFiles(t.out, new Set(), t.vanilla.topDirs()), ['DEFAULTPACKAGE/CONFIG.SGO'])
 })
 
 test('deploy: a DLL in use stops with a clear message and keeps the manifest in step', t => {

@@ -41,16 +41,16 @@ function resolve(doc, path) {
     found = doc.variables.map((node, index) => ({ node, list: doc.variables, index, path: [node.name] }))
   } else {
     const index = variableIndex(doc, head)
-    if (index === -1) throw new PathError(`Variable "${head}" does not exist`, segs, 0)
+    if (index === -1) throw new Error(`Variable "${head}" does not exist`)
     const node = doc.variables[index]
     found = [{ node, list: doc.variables, index, path: [node.name] }]
   }
 
-  rest.forEach((seg, depth) => {
+  for (const seg of rest) {
     const next = []
     for (const at of found) {
       if (at.node.type !== 'ptr' || !Array.isArray(at.node.value)) {
-        throw new PathError(`"${join(at.path)}" is not a list (it is ${at.node.type})`, segs, depth + 1)
+        throw new Error(`"${join(at.path)}" is not a list (it is ${at.node.type})`)
       }
       const list = at.node.value
       if (seg === '*') {
@@ -59,22 +59,14 @@ function resolve(doc, path) {
       }
       const index = listIndex(list, seg)
       if (index === -1) {
-        throw new PathError(`Index ${seg} out of range in "${join(at.path)}" (it has ${list.length})`, segs, depth + 1)
+        throw new Error(`Index ${seg} out of range in "${join(at.path)}" (it has ${list.length})`)
       }
       next.push({ node: list[index], list, index, path: [...at.path, String(index)] })
     }
     found = next
-  })
+  }
 
   return found.map(at => ({ ...at, path: join(at.path) }))
-}
-
-class PathError extends Error {
-  constructor(message, segments, depth) {
-    super(message)
-    this.segments = segments
-    this.depth = depth
-  }
 }
 
 // Walks every leaf (non-ptr value) with its path. Handy for finding what to change.
@@ -90,9 +82,13 @@ function* leaves(doc) {
   for (const v of doc.variables) yield* walk(v, [v.name])
 }
 
+function same(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
 // true if `a` is a strict ancestor of `b` ("X/1" is an ancestor of "X/1/3").
 function isAncestor(a, b) {
   return b.startsWith(a + '/')
 }
 
-module.exports = { split, join, resolve, leaves, isAncestor, PathError }
+module.exports = { join, resolve, leaves, isAncestor, same }

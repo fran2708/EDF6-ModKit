@@ -8,6 +8,7 @@ const { build } = require('../src/build')
 const { deploy, clean } = require('../src/deploy')
 const { importFolder } = require('../src/importer')
 const { resolve } = require('../src/path')
+const { vanillaProvider } = require('../src/vanilla')
 const { configDoc, tmpdir, write } = require('./helpers')
 
 const CONFIG = 'DEFAULTPACKAGE/CONFIG.SGO'
@@ -50,7 +51,7 @@ test('build: patches from two mods combine on top of the original', () => {
   const dir = setup()
   mod(dir, 'armor', { patches: { [CONFIG]: [{ op: 'mul', path: 'SoldierInit/*/3/1', value: 10 }] } })
   mod(dir, 'slots', { patches: { [CONFIG]: [{ op: 'append', path: 'SoldierInit/0/2', node: { type: 'int', value: 2 } }] } })
-  const r = build(modsInOrder(dir, ['slots', 'armor']), { vanillaDir: path.join(dir, 'vanilla') })
+  const r = build(modsInOrder(dir, ['slots', 'armor']), { vanilla: vanillaProvider({ vanillaDir: path.join(dir, 'vanilla') }) })
   assert.deepEqual(r.errors, [])
   assert.deepEqual(r.conflicts, [])
   const out = codec.decode(r.outputs.get(CONFIG).buffer)
@@ -64,7 +65,7 @@ test('build: a whole file is turned into a patch automatically and combines', ()
   legacy.variables[0].value = 'LEGACY'
   mod(dir, 'legacy', {}, { [CONFIG.toLowerCase()]: codec.encode(legacy) })
   mod(dir, 'armor', { patches: { [CONFIG]: [{ op: 'mul', path: 'SoldierInit/1/3/1', value: 2 }] } })
-  const r = build(modsInOrder(dir, ['legacy', 'armor']), { vanillaDir: path.join(dir, 'vanilla') })
+  const r = build(modsInOrder(dir, ['legacy', 'armor']), { vanilla: vanillaProvider({ vanillaDir: path.join(dir, 'vanilla') }) })
   assert.deepEqual(r.errors, [])
   const entry = r.outputs.get(CONFIG)
   assert.equal(entry.rel, CONFIG) // the original's name is used, not the mod's
@@ -76,7 +77,7 @@ test('build: a whole file is turned into a patch automatically and combines', ()
 test('build: without the original nothing can be patched and nothing is written', () => {
   const dir = setup()
   mod(dir, 'weapon', { patches: { 'WEAPON/X.SGO': [{ op: 'mul', path: 'a', value: 2 }] } })
-  const r = build(modsInOrder(dir, ['weapon']), { vanillaDir: path.join(dir, 'vanilla') })
+  const r = build(modsInOrder(dir, ['weapon']), { vanilla: vanillaProvider({ vanillaDir: path.join(dir, 'vanilla') }) })
   assert.equal(r.errors.length, 1)
   assert.match(r.errors[0].message, /Root.cpk/)
   assert.equal(r.outputs.size, 0)
@@ -126,7 +127,7 @@ test('import: separates patches from copied files', () => {
   doc.variables[2].value = 'Other'
   write(path.join(legacy, CONFIG), codec.encode(doc))
   write(path.join(legacy, 'UI', 'tex.dds'), 'binary')
-  const r = importFolder(legacy, path.join(dir, 'mods', 'viejo'), { vanillaDir: path.join(dir, 'vanilla') })
+  const r = importFolder(legacy, path.join(dir, 'mods', 'viejo'), { vanilla: vanillaProvider({ vanillaDir: path.join(dir, 'vanilla') }) })
   assert.deepEqual(r.patched, [CONFIG])
   assert.deepEqual(r.copied, ['UI/tex.dds'])
   const [m] = loadMods(path.join(dir, 'mods'))

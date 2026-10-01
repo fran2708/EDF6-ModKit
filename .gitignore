@@ -4,3 +4,4 @@ dist/
 /mods/
 /modkit.json
 *.log
+.vs/

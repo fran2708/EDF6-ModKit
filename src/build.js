@@ -11,14 +11,14 @@ const codec = require('./codec')
 const { apply } = require('./patch')
 const { diff } = require('./diff')
 const { analyze } = require('./conflicts')
-const { fileKey, indexDir } = require('./mods')
-const { gameTopDirs, isUserData } = require('./vanilla')
+const { fileKey } = require('./mods')
+const { isUserData } = require('./vanilla')
 
 function collectSteps(mods, vanilla, notes) {
   const steps = new Map() // key -> { rel, steps: [] }
   const add = (rel, step) => {
     const key = fileKey(rel)
-    const known = vanilla.relOf ? vanilla.relOf(key) : vanilla.get(key)?.rel
+    const known = vanilla.relOf(key)
     if (!steps.has(key)) steps.set(key, { rel: known || rel.replace(/\\/g, '/'), steps: [] })
     steps.get(key).steps.push(step)
   }
@@ -92,10 +92,8 @@ function buildFile(key, entry, vanilla, events, errors) {
 }
 
 // mods: already loaded mods, in load order (the last one wins).
-// vanilla: something with get(fileKey) -> { rel, abs } (see vanilla.js); or vanillaDir to use
-// only the files in that folder.
-function build(mods, { vanilla, vanillaDir }) {
-  vanilla = vanilla || (vanillaDir ? indexDir(vanillaDir) : new Map())
+// vanilla: a vanillaProvider (see vanilla.js).
+function build(mods, { vanilla }) {
   const notes = []
   const events = []
   const errors = []
@@ -106,7 +104,7 @@ function build(mods, { vanilla, vanillaDir }) {
   for (const [key, entry] of steps) {
     const buffer = buildFile(key, entry, vanilla, events, errors)
     if (buffer) {
-      dirs = dirs || gameTopDirs(vanilla)
+      dirs = dirs || vanilla.topDirs()
       outputs.set(key, {
         rel: entry.rel,
         buffer,

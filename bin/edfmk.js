@@ -3,15 +3,13 @@ const fs = require('fs')
 const path = require('path')
 const config = require('../src/config')
 const codec = require('../src/codec')
-const { loadMods } = require('../src/mods')
+const { loadMods, activeMods, fileKey } = require('../src/mods')
 const { build } = require('../src/build')
 const { deploy, clean, displacedNotes } = require('../src/deploy')
 const { diff } = require('../src/diff')
 const { leaves } = require('../src/path')
 const { importFolder, importInstalled } = require('../src/importer')
 const { ensureWorkspace, isPackaged, vanillaFor } = require('../src/workspace')
-const { gameTopDirs } = require('../src/vanilla')
-const { fileKey } = require('../src/mods')
 const { startServer, openBrowser } = require('../src/server')
 const { checkPatches } = require('../src/patcher')
 const { createLoader } = require('../src/loader')
@@ -63,14 +61,6 @@ function workspace(opts) {
   return cfg
 }
 
-function activeMods(cfg) {
-  const all = loadMods(cfg.modsDir)
-  const byId = new Map(all.map(m => [m.id, m]))
-  const missing = cfg.load.filter(id => !byId.has(id))
-  if (missing.length) throw new Error(`"load" lists mods that don't exist in ${cfg.modsDir}: ${missing.join(', ')}`)
-  return { all, active: cfg.load.map(id => byId.get(id)) }
-}
-
 function printResult(result) {
   for (const n of result.notes) console.log(`note: ${n}`)
   for (const c of result.conflicts) {
@@ -104,13 +94,13 @@ const commands = {
   build(args, opts) {
     const cfg = workspace(opts)
     if (!cfg.outDir) throw new Error('"gameDir" or "outDir" is missing in modkit.json')
-    const { all, active } = activeMods(cfg)
+    const { all, active } = activeMods(cfg.modsDir, cfg.load, { strict: true })
     const vanilla = vanillaFor(cfg)
     const result = build(active, { vanilla })
     const patches = checkPatches(result.outputs, cfg.outDir)
     result.conflicts.push(...patches.conflicts)
     result.notes.push(...patches.notes)
-    result.notes.push(...displacedNotes(cfg.outDir, result.outputs, new Set(all.map(m => m.id)), gameTopDirs(vanilla)))
+    result.notes.push(...displacedNotes(cfg.outDir, result.outputs, new Set(all.map(m => m.id)), vanilla.topDirs()))
     printResult(result)
     if (result.errors.length) {
       console.log(`\nNothing was written: ${result.errors.length} error(s).`)

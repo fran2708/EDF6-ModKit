@@ -1,7 +1,6 @@
 // Original game files on demand.
 //
-// vanillaProvider() is used just like the Map from indexDir(): get(fileKey) -> { rel, abs }. It
-// looks in the vanilla/ folder first (so files can still be placed there by hand) and, if the
+// vanillaProvider() has get(fileKey) -> { rel, abs }, like the Map from indexDir(). It looks in the vanilla/ folder first (so files can still be placed there by hand) and, if the
 // file isn't there, extracts it from the game's CPKs into vanilla/<path> and returns that copy.
 
 const fs = require('fs')
@@ -50,31 +49,25 @@ function vanillaProvider({ vanillaDir, gameDir }) {
     return undefined
   }
 
-  // Known top-level folders (DEFAULTPACKAGE, WEAPON, ...), to recognize mods inside zips.
-  function topDirs() {
-    const dirs = new Set()
-    const add = k => k.includes('/') && dirs.add(k.split('/')[0])
-    for (const k of local.keys()) add(k)
-    for (const { index } of loadArchives()) for (const k of index.keys()) add(k)
-    return dirs
-  }
-
   // Extensions the game uses in each top-level folder, upper case:
   // Map('WEAPON' -> Set('.SGO', '.DDS', ...)). Per folder because, for example, MISSION has
   // .JSON files but DEFAULTPACKAGE doesn't.
   function extensions() {
     const exts = new Map()
     const add = k => {
-      const m = /\.[^./]+$/.exec(k)
-      if (!m || !k.includes('/')) return
+      if (!k.includes('/')) return
       const top = k.split('/')[0]
       if (!exts.has(top)) exts.set(top, new Set())
-      exts.get(top).add(m[0])
+      const m = /\.[^./]+$/.exec(k)
+      if (m) exts.get(top).add(m[0])
     }
     for (const k of local.keys()) add(k)
     for (const { index } of loadArchives()) for (const k of index.keys()) add(k)
     return exts
   }
+
+  // Known top-level folders (DEFAULTPACKAGE, WEAPON, ...), to recognize mods inside zips.
+  const topDirs = () => new Set(extensions().keys())
 
   // The file's real name in the game, without extracting it.
   function relOf(key) {
@@ -83,16 +76,7 @@ function vanillaProvider({ vanillaDir, gameDir }) {
     return undefined
   }
 
-  return { get, relOf, topDirs, extensions, archives: () => loadArchives() }
-}
-
-// The game's top-level folders (DEFAULTPACKAGE, WEAPON, ...), upper case. Works with a provider
-// or with a plain Map from indexDir().
-function gameTopDirs(vanilla) {
-  if (vanilla.topDirs) return vanilla.topDirs()
-  const dirs = new Set()
-  for (const k of vanilla.keys()) if (k.includes('/')) dirs.add(k.split('/')[0])
-  return dirs
+  return { get, relOf, topDirs, extensions }
 }
 
 // true if rel (a path inside Mods/) is in one of the game's folders, rather than a plugin's data
@@ -109,4 +93,4 @@ function isUserData(rel, dirs) {
   return !isGameRel(rel, dirs) && !/^(Plugins|Patches|ExtraPatches)[\\/]/i.test(rel)
 }
 
-module.exports = { vanillaProvider, cpkFiles, gameTopDirs, isGameRel, isUserData }
+module.exports = { vanillaProvider, isGameRel, isUserData }

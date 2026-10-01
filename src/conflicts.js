@@ -9,11 +9,7 @@
 //
 // Events: { mod, file, path, kind, value? } with kind in set | scale | append | reshape | override
 
-const { isAncestor } = require('./path')
-
-function same(a, b) {
-  return JSON.stringify(a) === JSON.stringify(b)
-}
+const { isAncestor, same } = require('./path')
 
 function analyze(events) {
   const conflicts = []

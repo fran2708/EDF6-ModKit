@@ -58,13 +58,22 @@ function backupFile(outDir, rel, log, suffix = '') {
   log.push(`backed up ${rel}${suffix ? ` (${suffix.slice(1)})` : ''}`)
 }
 
-function restoreOrDelete(outDir, rel, entry, log) {
-  const target = path.join(outDir, rel)
-  const current = hashOf(target)
+// The file's current hash (null if it's gone), or undefined (and a log line) if it was edited by
+// hand after the last build.
+function untouchedHash(outDir, entry, log) {
+  const current = hashOf(path.join(outDir, entry.rel))
   if (current && current !== entry.sha1) {
-    log.push(`left ${rel} alone: it was edited by hand after the last build`)
-    return
+    log.push(`left ${entry.rel} alone: it was edited by hand after the last build`)
+    return undefined
   }
+  return current
+}
+
+function restoreOrDelete(outDir, entry, log) {
+  const { rel } = entry
+  const target = path.join(outDir, rel)
+  const current = untouchedHash(outDir, entry, log)
+  if (current === undefined) return
   const backup = path.join(statePaths(outDir).backup, rel)
   if (fs.existsSync(backup)) {
     fs.mkdirSync(path.dirname(target), { recursive: true })
@@ -79,14 +88,10 @@ function restoreOrDelete(outDir, rel, entry, log) {
 // An adopted file whose mod is no longer active: delete it but keep the backup for clean.
 // Returns its new manifest entry, or null if it was edited by hand and is no longer ours.
 function removeAdopted(outDir, entry, log) {
-  const target = path.join(outDir, entry.rel)
-  const current = hashOf(target)
-  if (current && current !== entry.sha1) {
-    log.push(`left ${entry.rel} alone: it was edited by hand after the last build`)
-    return null
-  }
+  const current = untouchedHash(outDir, entry, log)
+  if (current === undefined) return null
   if (current) {
-    fs.unlinkSync(target)
+    fs.unlinkSync(path.join(outDir, entry.rel))
     log.push(`deleted ${entry.rel}`)
   }
   return { rel: entry.rel, sha1: null, mods: [], adopted: entry.adopted }
@@ -96,11 +101,8 @@ function removeAdopted(outDir, entry, log) {
 // the file still belongs to the mod it was imported into. Returns the new entry, or null.
 function restoreAdopted(outDir, entry, log) {
   const target = path.join(outDir, entry.rel)
-  const current = hashOf(target)
-  if (current && current !== entry.sha1) {
-    log.push(`left ${entry.rel} alone: it was edited by hand after the last build`)
-    return null
-  }
+  const current = untouchedHash(outDir, entry, log)
+  if (current === undefined) return null
   const backup = path.join(statePaths(outDir).backup, entry.rel)
   if (!fs.existsSync(backup)) {
     if (current) fs.unlinkSync(target)
@@ -153,7 +155,7 @@ function deploy(outDir, outputs, { dryRun = false } = {}) {
         if (kept) next.files[key] = kept
         else delete next.files[key]
       } else {
-        restoreOrDelete(outDir, entry.rel, entry, log)
+        restoreOrDelete(outDir, entry, log)
         delete next.files[key]
       }
     }
@@ -256,7 +258,7 @@ function clean(outDir) {
   try {
     for (const [key, entry] of Object.entries(old.files)) {
       at = entry.rel
-      const kept = entry.adopted ? restoreAdopted(outDir, entry, log) : restoreOrDelete(outDir, entry.rel, entry, log)
+      const kept = entry.adopted ? restoreAdopted(outDir, entry, log) : restoreOrDelete(outDir, entry, log)
       if (kept) next.files[key] = kept
       else delete next.files[key]
     }
