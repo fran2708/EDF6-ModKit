@@ -1,6 +1,6 @@
 {
   "name": "edf6-modkit",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Mod framework for Earth Defense Force 6: mods are patches on SGO/DSGO files that combine instead of overwriting each other.",
   "license": "ISC",
   "private": true,
